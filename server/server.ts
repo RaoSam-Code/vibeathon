@@ -184,16 +184,31 @@ app.post('/api/agents/evaluate', async (req, res) => {
     const raw = await callGroq([
       {
         role: 'user',
-        content: `You are an expert strict interview evaluator.
-Question: "${question}"
-Candidate's answer: "${answer}"
+        content: `You are an expert strict interview evaluator and recruiter coach.
+Question asked by interviewer: "${question}"
+Candidate's response: "${answer}"
 
-Evaluate on two metrics (0-100):
-1. Content Quality (accuracy, depth, STAR method if behavioral)
-2. Delivery (clarity, structure, confidence)
+Evaluate the candidate's response in detail:
+1. Content Quality (accuracy, technical depth, relevance) - score between 0-100.
+2. Delivery (clarity, professional tone, structure, speed/hesitation clues) - score between 0-100.
+3. Tone Analysis (detect candidate's response tone, e.g. "Confident & Analytical", "Nervous & Fast-Paced", "Assertive & Clear", "Structured but Hesitant").
+4. STAR Method Alignment: Check if the response follows the STAR format (Situation, Task, Action, Result) if applicable, or general structuring. Identify if each specific part is present (true/false).
+5. Highlight feedback as constructive advice (2 sentences max).
 
-Return STRICTLY this JSON (no extra text):
-{"score_content": 85, "score_delivery": 70, "feedback": "2 sentences max.", "is_weakness": false}`
+Return STRICTLY a JSON object (no markdown, no extra text):
+{
+  "score_content": 85,
+  "score_delivery": 70,
+  "feedback": "Your answer demonstrates strong technical knowledge but lacks concrete metrics. Emphasize the exact impact of your actions.",
+  "tone": "Confident & Structured",
+  "star_status": {
+    "situation": true,
+    "task": true,
+    "action": true,
+    "result": false
+  },
+  "is_weakness": false
+}`
       }
     ], FAST_MODEL, 0.2);
 

@@ -10,6 +10,8 @@ import {
   VideoOff,
   Settings,
   X,
+  Loader2,
+  Subtitles,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { API_URL } from "@/lib/api";
@@ -18,6 +20,7 @@ import StreamingAvatar, {
   StreamingEvents,
   TaskType,
 } from "@heygen/streaming-avatar";
+import InterviewAvatar from "@/components/InterviewAvatar";
 
 interface Persona {
   name: string;
@@ -52,12 +55,28 @@ export default function VirtualInterviewRoom() {
     { /* empty */ },
   );
 
+  // AI Recruiter Coach Evaluation States
+  const [latestEval, setLatestEval] = useState<{
+    score_content: number;
+    score_delivery: number;
+    feedback: string;
+    tone: string;
+    star_status: { situation: boolean; task: boolean; action: boolean; result: boolean };
+  } | null>(null);
+  const [isEvaluating, setIsEvaluating] = useState(false);
+
   // Settings State
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedMic, setSelectedMic] = useState<string>("");
   const [selectedCam, setSelectedCam] = useState<string>("");
   const [aiSpeed, setAiSpeed] = useState<number>(1.0);
+
+  // Captions & Silence Threshold settings
+  const [showCaptions, setShowCaptions] = useState(true);
+  const [pauseThreshold, setPauseThreshold] = useState<number>(3.0);
+  const [silenceProgress, setSilenceProgress] = useState<number>(100);
+  const lastSpeechTimeRef = useRef<number>(Date.now());
 
   const recognitionRef = useRef<any>(null);
 
@@ -140,6 +159,13 @@ export default function VirtualInterviewRoom() {
         }
       } catch (err) {
         console.error("Initialization error:", err);
+        if (isMounted) {
+          const failures: Record<string, boolean> = {};
+          selectedPersonas.forEach((p) => {
+            failures[p.id] = true;
+          });
+          setFailedPersonas(failures);
+        }
       }
     };
 
@@ -172,6 +198,8 @@ export default function VirtualInterviewRoom() {
         fullTranscript += event.results[i][0].transcript;
       }
       setTranscript(fullTranscript);
+      lastSpeechTimeRef.current = Date.now();
+      setSilenceProgress(100);
     };
 
     recognition.onend = () => {
@@ -210,15 +238,32 @@ export default function VirtualInterviewRoom() {
     }
   }, [micActive, activeSpeakerId, isAiThinking]);
 
-  // Auto-Submit on Silence
+  // Track silence countdown and auto-submit
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      if (transcript.trim().length > 5 && micActive && !isAiThinking) {
+    if (!micActive || isAiThinking || activeSpeakerId || !transcript.trim()) {
+      setSilenceProgress(100);
+      return;
+    }
+
+    lastSpeechTimeRef.current = Date.now();
+    setSilenceProgress(100);
+
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - lastSpeechTimeRef.current;
+      const thresholdMs = pauseThreshold * 1000;
+      
+      if (elapsed >= thresholdMs) {
+        clearInterval(interval);
+        setSilenceProgress(0);
         submitUserResponse();
+      } else {
+        const remainingPct = Math.max(0, 100 - (elapsed / thresholdMs) * 100);
+        setSilenceProgress(remainingPct);
       }
-    }, 3000); // Trigger submit after 3 seconds of silence
-    return () => clearTimeout(timeout);
-  }, [transcript, micActive, isAiThinking]);
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [transcript, micActive, isAiThinking, activeSpeakerId, pauseThreshold]);
 
   // The Core AI Conversation Loop
   const submitUserResponse = async () => {
@@ -229,6 +274,26 @@ export default function VirtualInterviewRoom() {
     setHistory((prev) => [...prev, { role: "user", content: userMessage }]);
     setIsAiThinking(true);
     setMicActive(false); // Pause mic while AI thinks/speaks
+
+    // Trigger AI Recruiter Coach Live Evaluation
+    const lastQuestionObj = [...history].reverse().find(h => h.role === 'ai');
+    const questionText = lastQuestionObj ? lastQuestionObj.content : "Introduce yourself and explain why you're a good fit.";
+
+    setIsEvaluating(true);
+    fetch(`${API_URL}api/agents/evaluate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: questionText, answer: userMessage }),
+    })
+      .then((r) => r.json())
+      .then((evalData) => {
+        setLatestEval(evalData);
+        setIsEvaluating(false);
+      })
+      .catch((err) => {
+        console.error("Live evaluation failed:", err);
+        setIsEvaluating(false);
+      });
 
     try {
       const res = await fetch(`${API_URL}api/agents/chat`, {
@@ -387,209 +452,374 @@ export default function VirtualInterviewRoom() {
         <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-600/20 rounded-full blur-[120px]" />
       </div>
 
-      {/* Main Content */}
-      <div className="relative z-10 h-screen flex flex-col p-6">
-        {/* Header */}
-        <header className="flex justify-between items-center mb-6">
-          <div className="flex items-center gap-2 bg-white/10 px-4 py-2 rounded-full backdrop-blur-md border border-white/10">
-            <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
-            <span className="text-sm font-semibold tracking-wider">REC</span>
-            <span className="text-xs text-slate-400 ml-2">Panel Session</span>
-          </div>
-          <button
-            onClick={() => setIsSettingsOpen(true)}
-            className="p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
-          >
-            <Settings className="w-5 h-5 text-slate-300" />
-          </button>
-        </header>
-
-        {/* Avatars Grid */}
-        <div
-          className={`flex-1 grid gap-6 mb-8 ${selectedPersonas.length === 1 ? "grid-cols-1 max-w-4xl mx-auto w-full" : "grid-cols-2 max-w-6xl mx-auto w-full"}`}
-        >
-          {selectedPersonas.map((persona) => (
-            <motion.div
-              key={persona.id}
-              className={`relative rounded-3xl overflow-hidden bg-slate-800 border-2 transition-colors duration-500 ${activeSpeakerId === persona.id ? "border-blue-500 shadow-[0_0_30px_rgba(59,130,246,0.3)]" : "border-slate-700/50"}`}
-              layout
+      {/* Main Content split layout */}
+      <div className="relative z-10 h-screen flex p-6 gap-6 overflow-hidden">
+        {/* Left Column: Avatars & Controls */}
+        <div className="flex-1 flex flex-col h-full overflow-hidden">
+          {/* Header */}
+          <header className="flex justify-between items-center mb-4">
+            <div className="flex items-center gap-2 bg-white/10 px-4 py-2 rounded-full backdrop-blur-md border border-white/10">
+              <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
+              <span className="text-sm font-semibold tracking-wider">REC</span>
+              <span className="text-xs text-slate-400 ml-2">Panel Session</span>
+            </div>
+            <button
+              onClick={() => setIsSettingsOpen(true)}
+              className="p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
             >
-              {/* Loading Indicator */}
-              {!failedPersonas[persona.id] && (
-                <div className="absolute inset-0 flex items-center justify-center bg-slate-800 text-slate-500 text-sm font-bold animate-pulse z-10">
-                  Connecting to Stream...
-                </div>
-              )}
+              <Settings className="w-5 h-5 text-slate-300" />
+            </button>
+          </header>
 
-              {/* HeyGen WebRTC Video stream */}
-              <video
-                ref={(el) => {
-                  videoRefs.current[persona.id] = el;
-                }}
-                autoPlay
-                playsInline
-                // Video is NOT muted because audio runs directly through this WebRTC connection hook
-                className={`absolute inset-0 w-full h-full object-cover z-20 ${failedPersonas[persona.id] ? "hidden" : ""}`}
-              />
-
-              {/* Static visual fallback for when WebRTC Rate Limit fails on free tier */}
-              {failedPersonas[persona.id] && (
-                <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-900">
-                  <img
-                    src={persona.avatarUrl}
-                    alt={persona.name}
-                    className="absolute inset-0 w-full h-full object-cover opacity-80 pointer-events-none"
+          {/* Avatars Grid */}
+          <div
+            className={`flex-1 grid gap-6 mb-6 ${
+              selectedPersonas.length === 1 ? "grid-cols-1" : "grid-cols-2"
+            }`}
+          >
+            {selectedPersonas.map((persona) => (
+              <motion.div
+                key={persona.id}
+                className={`relative rounded-3xl overflow-hidden bg-slate-800 border-2 transition-colors duration-500 ${
+                  activeSpeakerId === persona.id
+                    ? "border-blue-500 shadow-[0_0_30px_rgba(59,130,246,0.3)]"
+                    : "border-slate-700/50"
+                }`}
+                layout
+              >
+                {/* 3D Interview Avatar View */}
+                <div className="absolute inset-0 z-10 w-full h-full">
+                  <InterviewAvatar
+                    modelPath={
+                      persona.name === "The Executive"
+                        ? "/models/the-executive.glb"
+                        : persona.name === "The Architect"
+                        ? "/models/the-architect.glb"
+                        : "/models/the-debugger.glb"
+                    }
                   />
-                  <div className="absolute inset-0 bg-black/40 mix-blend-multiply pointer-events-none" />
-                  <p className="z-40 text-red-300 font-bold bg-black/60 px-4 py-2 rounded-lg backdrop-blur-sm border border-red-500/30 text-sm">
-                    HeyGen Stream Limit Reached - Fallback Mode
-                  </p>
+                </div>
+
+                {/* HeyGen WebRTC Video stream */}
+                {!failedPersonas[persona.id] && (
+                  <video
+                    ref={(el) => {
+                      videoRefs.current[persona.id] = el;
+                    }}
+                    autoPlay
+                    playsInline
+                    className="absolute inset-0 w-full h-full object-cover z-20"
+                  />
+                )}
+
+                {/* Simulation active overlay */}
+                {failedPersonas[persona.id] && (
+                  <div className="absolute top-4 right-4 z-30">
+                    <span className="bg-blue-500/80 backdrop-blur-sm text-[10px] font-black uppercase text-white px-2.5 py-1.5 rounded-full border border-blue-400/30 shadow-md">
+                      3D Agent Active
+                    </span>
+                  </div>
+                )}
+
+                {/* Speaker Overlay */}
+                <div className="absolute bottom-6 left-6 flex items-center gap-3 bg-black/50 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/10 z-30">
+                  <div className="flex items-end gap-1 h-4">
+                    {[1, 2, 3].map((bar) => (
+                      <motion.div
+                        key={bar}
+                        className={`w-1 bg-blue-400 rounded-full ${
+                          activeSpeakerId === persona.id ? "" : "h-1"
+                        }`}
+                        animate={
+                          activeSpeakerId === persona.id
+                            ? {
+                                height: ["20%", "80%", "40%", "100%", "30%"],
+                              }
+                            : { height: "20%" }
+                        }
+                        transition={{
+                          repeat: Infinity,
+                          duration: 0.8,
+                          delay: bar * 0.1,
+                          ease: "easeInOut",
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white leading-tight">
+                      {persona.name}
+                    </h3>
+                    <p className="text-[10px] text-slate-300 font-semibold">
+                      {persona.desc}
+                    </p>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+
+          {/* User Self-View & Controls */}
+          <div className="h-24 flex items-center justify-between px-8 bg-slate-800/50 backdrop-blur-xl border border-white/10 rounded-3xl w-full">
+            {/* Mock Self View */}
+            <div className="h-16 w-24 bg-slate-700 rounded-xl overflow-hidden relative border border-white/10">
+              {camActive ? (
+                <div className="absolute inset-0 flex items-center justify-center bg-slate-800 text-slate-500 text-xs font-bold">
+                  Cam On
+                </div>
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center bg-slate-900">
+                  <VideoOff className="w-5 h-5 text-slate-500" />
                 </div>
               )}
+            </div>
 
-              {/* Speaker Overlay */}
-              <div className="absolute bottom-6 left-6 flex items-center gap-3 bg-black/50 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/10">
-                <div className="flex items-end gap-1 h-4">
-                  {[1, 2, 3].map((bar) => (
+            {/* Controls */}
+            <div className="flex items-center gap-4">
+              <div className="flex flex-col items-center gap-2">
+                <button
+                  onClick={() => setMicActive(!micActive)}
+                  className={`p-4 rounded-full transition-all ${
+                    micActive
+                      ? "bg-white/10 text-white hover:bg-white/20"
+                      : "bg-red-500/20 text-red-500 hover:bg-red-500/30"
+                  } disabled:opacity-50`}
+                  disabled={activeSpeakerId !== null || isAiThinking}
+                >
+                  {micActive ? (
+                    <Mic className="w-6 h-6" />
+                  ) : (
+                    <MicOff className="w-6 h-6" />
+                  )}
+                </button>
+              </div>
+
+              <button
+                onClick={() => setCamActive(!camActive)}
+                className={`p-4 rounded-full transition-all ${
+                  camActive
+                    ? "bg-white/10 text-white hover:bg-white/20"
+                    : "bg-red-500/20 text-red-500 hover:bg-red-500/30"
+                }`}
+              >
+                {camActive ? (
+                  <Video className="w-6 h-6" />
+                ) : (
+                  <VideoOff className="w-6 h-6" />
+                )}
+              </button>
+
+              <button
+                onClick={() => setShowCaptions(!showCaptions)}
+                className={`p-4 rounded-full transition-all ${
+                  showCaptions
+                    ? "bg-white/10 text-white hover:bg-white/20"
+                    : "bg-slate-700/50 text-slate-400 hover:bg-slate-700/80"
+                }`}
+                title={showCaptions ? "Disable Captions" : "Enable Captions"}
+              >
+                <Subtitles className="w-6 h-6" />
+              </button>
+
+              {/* Answer completion trigger */}
+              {transcript && micActive && (
+                <button
+                  onClick={submitUserResponse}
+                  className="px-5 py-4 rounded-full bg-blue-500 hover:bg-blue-600 text-white font-bold ml-2 shadow-[0_0_15px_rgba(59,130,246,0.5)] transition-all animate-in zoom-in"
+                >
+                  Submit Answer
+                </button>
+              )}
+
+              <button
+                onClick={handleEndInterview}
+                className="px-6 py-4 rounded-full bg-red-500 hover:bg-red-600 text-white font-bold flex items-center gap-2 transition-colors ml-4 shadow-[0_0_20px_rgba(239,68,68,0.4)]"
+              >
+                <PhoneOff className="w-5 h-5" /> End Interview
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column: AI Recruiter Coach Panel */}
+        <div className="w-96 rounded-3xl bg-slate-950/40 backdrop-blur-xl border border-white/10 p-6 flex flex-col gap-6 h-full overflow-y-auto">
+          <div className="flex items-center justify-between border-b border-white/10 pb-4">
+            <div className="flex items-center gap-2">
+              <div className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
+              <h3 className="font-display text-sm font-black text-white uppercase tracking-wider">AI Recruiter Coach</h3>
+            </div>
+            <span className="text-[9px] font-black text-slate-400 bg-white/5 px-2.5 py-1 rounded border border-white/10">Active Evaluation</span>
+          </div>
+
+          {isEvaluating && (
+            <div className="flex-1 flex flex-col items-center justify-center text-center p-6 gap-3">
+              <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+              <p className="text-sm font-bold text-slate-300 animate-pulse">Analyzing response structure...</p>
+              <p className="text-[10px] text-slate-500 leading-normal max-w-[200px] mx-auto">Evaluating content quality, tone patterns, and STAR format checklist items.</p>
+            </div>
+          )}
+
+          {!isEvaluating && !latestEval && (
+            <div className="flex-1 flex flex-col items-center justify-center text-center p-6 gap-4 text-slate-500">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/5 border border-white/10 shadow-inner">
+                <Mic className="w-6 h-6 text-slate-400 animate-pulse" />
+              </div>
+              <div>
+                <h4 className="font-bold text-sm text-slate-300 mb-1">Coach Standby</h4>
+                <p className="text-xs text-slate-500 max-w-[220px] mx-auto leading-relaxed">
+                  Start answering the interviewer's question. Once you finish speaking and submit, the coach will display real-time feedback, tone, and STAR checklist ratings here.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {!isEvaluating && latestEval && (
+            <div className="space-y-6 flex-1 flex flex-col justify-start">
+              {/* Score Meters */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col items-center justify-center text-center">
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Content Quality</span>
+                  <div className="text-3xl font-black text-blue-400">{latestEval.score_content}</div>
+                  <span className="text-[10px] text-slate-500 mt-1">/ 100</span>
+                </div>
+                <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col items-center justify-center text-center">
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Delivery & Clarity</span>
+                  <div className="text-3xl font-black text-purple-400">{latestEval.score_delivery}</div>
+                  <span className="text-[10px] text-slate-500 mt-1">/ 100</span>
+                </div>
+              </div>
+
+              {/* Detected Tone */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Answer Tone</label>
+                <div className="px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-xs font-bold text-white flex items-center justify-between shadow-inner">
+                  <span>{latestEval.tone || "Analyzing..."}</span>
+                  <span className="h-2 w-2 rounded-full bg-blue-400 animate-pulse" />
+                </div>
+              </div>
+
+              {/* STAR compliance checklist */}
+              <div className="space-y-3">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">STAR Structure Check</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { key: "situation", label: "Situation" },
+                    { key: "task", label: "Task" },
+                    { key: "action", label: "Action" },
+                    { key: "result", label: "Result" }
+                  ].map((item) => {
+                    const hasPart = latestEval.star_status?.[item.key as keyof typeof latestEval.star_status] ?? false;
+                    return (
+                      <div
+                        key={item.key}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-extrabold transition-all duration-300 ${
+                          hasPart
+                            ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 shadow-[0_2px_8px_rgba(16,185,129,0.1)]"
+                            : "bg-white/5 border-white/5 text-slate-500"
+                        }`}
+                      >
+                        <div className={`h-1.5 w-1.5 rounded-full ${hasPart ? "bg-emerald-400 animate-pulse" : "bg-slate-600"}`} />
+                        {item.label}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Coach Advice */}
+              <div className="p-4 rounded-2xl bg-blue-500/5 border border-blue-500/10 space-y-2 mt-auto">
+                <label className="text-[10px] font-black text-blue-400 uppercase tracking-wider block">Live Coach Insight</label>
+                <p className="text-xs text-slate-300 font-semibold leading-relaxed">
+                  {latestEval.feedback}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Subtitles & Status Overlay */}
+      <div className="absolute top-8 left-1/2 -translate-x-1/2 flex justify-center z-50 pointer-events-none">
+        <AnimatePresence mode="wait">
+          {isAiThinking && !activeSpeakerId && (
+            <motion.div
+              key="thinking"
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="bg-amber-500/20 text-amber-500 backdrop-blur-md px-6 py-2 rounded-full border border-amber-500/30 font-bold flex items-center gap-3 shadow-lg"
+            >
+              <div className="flex gap-1">
+                <div
+                  className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-bounce"
+                  style={{ animationDelay: "0ms" }}
+                />
+                <div
+                  className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-bounce"
+                  style={{ animationDelay: "150ms" }}
+                />
+                <div
+                  className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-bounce"
+                  style={{ animationDelay: "300ms" }}
+                />
+              </div>
+              Processing Answer...
+            </motion.div>
+          )}
+          {!isAiThinking && micActive && !activeSpeakerId && (
+            <motion.div
+              key="listening"
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="flex flex-col gap-2 bg-emerald-500/20 backdrop-blur-md px-6 py-3 rounded-2xl border border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.25)] min-w-[240px]"
+            >
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="text-emerald-400 font-bold text-sm">Listening to you...</span>
+                </div>
+                <div className="flex items-end gap-1 h-3 pb-0.5">
+                  {[1, 2, 3, 4, 5].map((i) => (
                     <motion.div
-                      key={bar}
-                      className={`w-1 bg-blue-400 rounded-full ${activeSpeakerId === persona.id ? "" : "h-1"}`}
-                      animate={
-                        activeSpeakerId === persona.id
-                          ? {
-                            height: ["20%", "80%", "40%", "100%", "30%"],
-                          }
-                          : { height: "20%" }
-                      }
+                      key={i}
+                      className="w-0.75 bg-emerald-400 rounded-full"
+                      animate={{
+                        height: ["20%", "90%", "20%"],
+                      }}
                       transition={{
                         repeat: Infinity,
-                        duration: 0.8,
-                        delay: bar * 0.1,
+                        duration: 0.6,
+                        delay: i * 0.1,
                         ease: "easeInOut",
                       }}
+                      style={{ height: "20%" }}
                     />
                   ))}
                 </div>
-                <div>
-                  <h3 className="text-sm font-bold text-white leading-tight">
-                    {persona.name}
-                  </h3>
-                  <p className="text-[10px] text-slate-300 font-semibold">
-                    {persona.desc}
-                  </p>
+              </div>
+              {transcript.trim().length > 0 && (
+                <div className="space-y-1 mt-1 border-t border-emerald-500/10 pt-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                  <div className="flex justify-between text-[9px] text-emerald-400/80 font-extrabold uppercase tracking-wider">
+                    <span>Auto-submitting in {(silenceProgress / 100 * pauseThreshold).toFixed(1)}s</span>
+                    <span>{Math.round(silenceProgress)}%</span>
+                  </div>
+                  <div className="h-1 w-full bg-emerald-950/50 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-emerald-400 transition-all duration-100 ease-linear rounded-full"
+                      style={{ width: `${silenceProgress}%` }}
+                    />
+                  </div>
                 </div>
-              </div>
-            </motion.div>
-          ))}
-        </div>
-
-        {/* User Self-View & Controls */}
-        <div className="h-24 flex items-center justify-between px-8 bg-slate-800/50 backdrop-blur-xl border border-white/10 rounded-3xl mx-auto max-w-3xl w-full">
-          {/* Mock Self View */}
-          <div className="h-16 w-24 bg-slate-700 rounded-xl overflow-hidden relative border border-white/10">
-            {camActive ? (
-              <div className="absolute inset-0 flex items-center justify-center bg-slate-800 text-slate-500 text-xs font-bold">
-                Cam On
-              </div>
-            ) : (
-              <div className="absolute inset-0 flex items-center justify-center bg-slate-900">
-                <VideoOff className="w-5 h-5 text-slate-500" />
-              </div>
-            )}
-          </div>
-
-          {/* Controls */}
-          <div className="flex items-center gap-4">
-            <div className="flex flex-col items-center gap-2">
-              <button
-                onClick={() => setMicActive(!micActive)}
-                className={`p-4 rounded-full transition-all ${micActive ? "bg-white/10 text-white hover:bg-white/20" : "bg-red-500/20 text-red-500 hover:bg-red-500/30"} disabled:opacity-50`}
-                disabled={activeSpeakerId !== null || isAiThinking}
-              >
-                {micActive ? (
-                  <Mic className="w-6 h-6" />
-                ) : (
-                  <MicOff className="w-6 h-6" />
-                )}
-              </button>
-            </div>
-
-            <button
-              onClick={() => setCamActive(!camActive)}
-              className={`p-4 rounded-full transition-all ${camActive ? "bg-white/10 text-white hover:bg-white/20" : "bg-red-500/20 text-red-500 hover:bg-red-500/30"}`}
-            >
-              {camActive ? (
-                <Video className="w-6 h-6" />
-              ) : (
-                <VideoOff className="w-6 h-6" />
               )}
-            </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
 
-            {/* Answer completion trigger */}
-            {transcript && micActive && (
-              <button
-                onClick={submitUserResponse}
-                className="px-4 py-3 rounded-full bg-blue-500 hover:bg-blue-600 text-white font-bold ml-2 shadow-[0_0_15px_rgba(59,130,246,0.5)] transition-all animate-in zoom-in"
-              >
-                Submit Answer
-              </button>
-            )}
-
-            <button
-              onClick={handleEndInterview}
-              className="px-6 py-4 rounded-full bg-red-500 hover:bg-red-600 text-white font-bold flex items-center gap-2 transition-colors ml-4 shadow-[0_0_20px_rgba(239,68,68,0.4)]"
-            >
-              <PhoneOff className="w-5 h-5" /> End Interview
-            </button>
-          </div>
-        </div>
-
-        {/* Subtitles & Status Overlay */}
-        <div className="absolute top-8 left-1/2 -translate-x-1/2 flex justify-center z-50 pointer-events-none">
+      <div className="absolute bottom-32 left-0 right-0 px-8 z-40 flex flex-col items-center pointer-events-none">
           <AnimatePresence mode="wait">
-            {isAiThinking && !activeSpeakerId && (
-              <motion.div
-                key="thinking"
-                initial={{ opacity: 0, y: -20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                className="bg-amber-500/20 text-amber-500 backdrop-blur-md px-6 py-2 rounded-full border border-amber-500/30 font-bold flex items-center gap-3 shadow-lg"
-              >
-                <div className="flex gap-1">
-                  <div
-                    className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-bounce"
-                    style={{ animationDelay: "0ms" }}
-                  />
-                  <div
-                    className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-bounce"
-                    style={{ animationDelay: "150ms" }}
-                  />
-                  <div
-                    className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-bounce"
-                    style={{ animationDelay: "300ms" }}
-                  />
-                </div>
-                Processing Answer...
-              </motion.div>
-            )}
-            {!isAiThinking && micActive && !activeSpeakerId && (
-              <motion.div
-                key="listening"
-                initial={{ opacity: 0, y: -20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                className="bg-emerald-500/20 text-emerald-400 backdrop-blur-md px-6 py-2 rounded-full border border-emerald-500/30 font-bold flex items-center gap-2 shadow-[0_0_15px_rgba(16,185,129,0.2)]"
-              >
-                <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                Listening to you...
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        <div className="absolute bottom-32 left-0 right-0 px-8 z-40 flex flex-col items-center pointer-events-none">
-          <AnimatePresence mode="wait">
-            {activeSpeakerId && (
+            {showCaptions && activeSpeakerId && (
               <motion.div
                 key="aispeaking"
                 initial={{ opacity: 0, y: 20 }}
@@ -607,7 +837,7 @@ export default function VirtualInterviewRoom() {
                 </p>
               </motion.div>
             )}
-            {transcript && micActive && !activeSpeakerId && !isAiThinking && (
+            {showCaptions && transcript && micActive && !activeSpeakerId && !isAiThinking && (
               <motion.div
                 key="userspeaking"
                 initial={{ opacity: 0, y: 20 }}
@@ -626,7 +856,6 @@ export default function VirtualInterviewRoom() {
             )}
           </AnimatePresence>
         </div>
-      </div>
 
       {/* Settings Modal */}
       <AnimatePresence>
@@ -720,6 +949,52 @@ export default function VirtualInterviewRoom() {
                     <span>Slower</span>
                     <span>Faster</span>
                   </div>
+                </div>
+
+                <div className="space-y-3 pt-4 border-t border-slate-800">
+                  <div className="flex justify-between items-center">
+                    <label className="text-sm font-medium text-slate-300">
+                      Silence Auto-Submit Threshold
+                    </label>
+                    <span className="text-xs font-bold bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded-md">
+                      {pauseThreshold}s
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="1.0"
+                    max="5.0"
+                    step="0.5"
+                    value={pauseThreshold}
+                    onChange={(e) => setPauseThreshold(parseFloat(e.target.value))}
+                    className="w-full accent-emerald-500 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer"
+                  />
+                  <div className="flex justify-between text-xs text-slate-500">
+                    <span>Fast (1.0s)</span>
+                    <span>Slow (5.0s)</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-4 border-t border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <Subtitles className="w-4 h-4 text-blue-400" />
+                    <span className="text-sm font-medium text-slate-300">
+                      Show Closed Captions (CC)
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setShowCaptions(!showCaptions)}
+                    type="button"
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      showCaptions ? "bg-blue-600" : "bg-slate-700"
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        showCaptions ? "translate-x-5" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
                 </div>
               </div>
 
