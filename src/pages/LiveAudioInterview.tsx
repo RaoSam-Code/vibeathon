@@ -391,9 +391,6 @@ export default function LiveAudioInterview() {
     const strengths = evals.map(e => e.strength).filter(Boolean);
     const weaknesses = evals.map(e => e.weakness).filter(Boolean);
 
-    if (strengths.length === 0) strengths.push("Clear and articulate responses", "Maintained good pacing and flow");
-    if (weaknesses.length === 0) weaknesses.push("Include more system design details", "Incorporate quantitative outcomes in results");
-
     const standoutAnswers: string[] = [];
     const weakAnswers: string[] = [];
 
@@ -402,12 +399,9 @@ export default function LiveAudioInterview() {
       if (score >= 82) {
         standoutAnswers.push(`Q: "${ev.questionText}" - Clear structured answer with strong depth (${score}%).`);
       } else if (score < 68) {
-        standoutAnswers.push(`Q: "${ev.questionText}" - Could be optimized. ${ev.feedback || ev.weakness}`);
+        weakAnswers.push(`Q: "${ev.questionText}" - Could be optimized. ${ev.feedback || ev.weakness}`);
       }
     });
-
-    if (standoutAnswers.length === 0) standoutAnswers.push("Direct answer to technical experience was well-explained.");
-    if (weakAnswers.length === 0) weakAnswers.push("Ensure STAR structure is fully complete in complex scenario questions.");
 
     const roadmap = [
       starAvg < 80 ? "Practice structuring behavioral answers using the complete STAR framework." : "Maintain STAR structure but elaborate on specific technical metrics.",

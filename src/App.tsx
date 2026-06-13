@@ -36,6 +36,11 @@ const App = () => (
                 <Report />
               </ProtectedRoute>
             } />
+            <Route path="/report/:sessionId" element={
+              <ProtectedRoute>
+                <Report />
+              </ProtectedRoute>
+            } />
             <Route path="/virtual-room" element={
               <ProtectedRoute>
                 <VirtualInterviewRoom />
