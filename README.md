@@ -97,8 +97,8 @@ SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 
 1. **Clone the Repository:**
    ```bash
-   git clone https://github.com/ace4o4/hiremind.git
-   cd hiremind
+   git clone https://github.com/RaoSam-Code/vibeathon.git
+   cd vibeathon
    ```
 
 2. **Install Dependencies:**
@@ -140,5 +140,5 @@ SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 ---
 
 <div align="center">
-  <sub>Built with ❤️ by team HireMind. Optimize your prep, conquer your fears, and land the role.</sub>
+  <sub>Built with ❤️ by team Cyber Soulz. Optimize your prep, conquer your fears, and land the role.</sub>
 </div>
