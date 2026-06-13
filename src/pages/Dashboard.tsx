@@ -23,7 +23,7 @@ const Sidebar = ({ activeTab, setActiveTab, onSignOut }: { activeTab: string, se
         <Zap className="h-5 w-5" />
       </div>
       <span className="font-display text-xl font-black text-slate-800 tracking-tight">
-        Interview<span className="text-blue-600">Guru</span>
+        HIRE<span className="text-blue-600">MIND</span>
       </span>
     </Link>
 
@@ -90,27 +90,42 @@ const statsData = [
 /* ===== RECENT SESSION BLOCK ===== */
 const RecentSessionCard = ({ id, title, score, date, tags }: { id: string; title: string; score: number; date: string; tags: string[] }) => (
   <Link to={`/report/${id}`} className="block group">
-    <NeuCard className="flex items-center gap-4 p-4 cursor-pointer group-hover:bg-white/5 transition-colors">
-      <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl font-display text-lg font-black border ${score >= 80
-        ? "bg-primary/10 text-primary border-primary/20"
-        : score >= 60
-          ? "bg-purple-500/10 text-purple border-purple-500/20"
-          : "bg-destructive/10 text-destructive border-destructive/20"
-        }`}>
+    <NeuCard className="flex items-center gap-5 p-5 cursor-pointer hover:scale-[1.01] transition-transform duration-300">
+      <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full font-display text-lg font-black transition-all duration-300 border ${
+        score >= 80
+          ? "bg-gradient-to-br from-emerald-50 to-emerald-100/60 text-emerald-600 border-emerald-200 shadow-[0_0_12px_rgba(16,185,129,0.15),_2px_3px_6px_rgba(163,177,198,0.4)]"
+          : score >= 60
+            ? "bg-gradient-to-br from-blue-50 to-blue-100/60 text-blue-600 border-blue-200 shadow-[0_0_12px_rgba(59,130,246,0.15),_2px_3px_6px_rgba(163,177,198,0.4)]"
+            : "bg-gradient-to-br from-rose-50 to-rose-100/60 text-rose-600 border-rose-200 shadow-[0_0_12px_rgba(244,63,94,0.15),_2px_3px_6px_rgba(163,177,198,0.4)]"
+      }`}>
         {score}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="font-bold text-slate-800 truncate group-hover:text-blue-600 transition-colors">{title}</p>
-        <div className="mt-1 flex items-center gap-2">
-          <span className="text-xs font-semibold text-slate-500">{date}</span>
-          <div className="flex items-center gap-1">
-            {tags.map((t) => (
-              <span key={t} className="neu-pressed px-2 py-0.5 rounded-full text-[10px] font-bold text-slate-500">{t}</span>
-            ))}
-          </div>
+        <p className="font-bold text-slate-800 text-base truncate group-hover:text-blue-600 transition-colors leading-snug">{title}</p>
+        <div className="mt-2 flex items-center gap-2 flex-wrap">
+          <span className="text-[10px] font-black tracking-wide text-slate-400 bg-slate-200/50 px-2.5 py-1 rounded-md border border-slate-300/30 shadow-[inset_0_1px_2px_rgba(255,255,255,0.8)] select-none">
+            {date}
+          </span>
+          {tags.map((t, idx) => {
+            if (!t) return null;
+            const isRole = idx === 1 || t.toLowerCase().includes("engineer") || t.toLowerCase().includes("developer") || t.toLowerCase().includes("role");
+            return (
+              <span
+                key={idx}
+                className={`px-3 py-1 rounded-full text-[10px] font-extrabold tracking-wide transition-all duration-300 hover:scale-105 select-none border max-w-[180px] truncate ${
+                  isRole
+                    ? "text-purple-600 bg-gradient-to-br from-purple-50/95 to-purple-100/60 border-purple-200/50 shadow-[2px_3px_5px_rgba(163,177,198,0.4),_inset_0_2px_4px_rgba(255,255,255,0.9)]"
+                    : "text-blue-600 bg-gradient-to-br from-blue-50/95 to-blue-100/60 border-blue-200/50 shadow-[2px_3px_5px_rgba(163,177,198,0.4),_inset_0_2px_4px_rgba(255,255,255,0.9)]"
+                }`}
+                title={t}
+              >
+                {t}
+              </span>
+            );
+          })}
         </div>
       </div>
-      <ChevronRight className="h-4 w-4 text-slate-400 group-hover:text-blue-500 transition-colors" />
+      <ChevronRight className="h-4 w-4 text-slate-400 group-hover:text-blue-500 group-hover:translate-x-1 transition-all" />
     </NeuCard>
   </Link>
 );

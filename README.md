@@ -1,6 +1,6 @@
 
-  # Interview Guru #
-  **"Not just mock. Your forever Interview Guru who remembers everything."**
+  # HireMind #
+  **"Not just mock. Your forever AI Interview Mentor who remembers everything."**
   <p align="center">
     <a href="https://react.dev/"><img src="https://img.shields.io/badge/React-18-blue?style=for-the-badge&logo=react&logoColor=white" alt="React" /></a>
     <a href="https://vitejs.dev/"><img src="https://img.shields.io/badge/Vite-5-646CFF?style=for-the-badge&logo=vite&logoColor=white" alt="Vite" /></a>
@@ -22,7 +22,7 @@
 
 ## ✨ Features That Set Us Apart
 
-InterviewForge delivers end-to-end, hyper-personalized, multi-modal mock interviews using 6 game-changing differentiators:
+HireMind delivers end-to-end, hyper-personalized, multi-modal mock interviews using 6 game-changing differentiators:
 
 | Feature | Description |
 | :--- | :--- |
@@ -37,7 +37,7 @@ InterviewForge delivers end-to-end, hyper-personalized, multi-modal mock intervi
 
 ## 🎨 3D Liquid Glass Design System
 
-Built on the bleeding edge of web design, InterviewForge features a **Calming yet Exciting** aesthetic:
+Built on the bleeding edge of web design, HireMind features a **Calming yet Exciting** aesthetic:
 - **Liquid Glass Material:** Frosted translucent glass with real-time refraction and deep chromatic aberration.
 - **Ambient Lighting:** Soft neon-teal (`#00F5D4`) and warm purple (`#A855F7`) glows that dynamically pulse with interaction.
 - **2D Physics:** Momentum-based scrolling and parallax layers that make UI cards subtly tilt and bounce like physical objects.

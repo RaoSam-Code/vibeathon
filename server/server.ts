@@ -572,7 +572,7 @@ app.listen(port, () => {
 const frontendDistPath = path.resolve(__dirname, '../../dist');
 app.use(express.static(frontendDistPath));
 
-app.get('*', (req, res) => {
+app.get('/{*splat}', (req, res) => {
   res.sendFile(path.join(frontendDistPath, 'index.html'));
 });
 
