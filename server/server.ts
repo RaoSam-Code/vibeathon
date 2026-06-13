@@ -1,4 +1,17 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+// Polyfill browser classes required by pdf-parse in serverless environments (Vercel Node runtime)
+if (typeof global !== 'undefined') {
+  if (!(global as any).DOMMatrix) {
+    (global as any).DOMMatrix = class DOMMatrix {};
+  }
+  if (!(global as any).ImageData) {
+    (global as any).ImageData = class ImageData {};
+  }
+  if (!(global as any).Path2D) {
+    (global as any).Path2D = class Path2D {};
+  }
+}
+
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -36,11 +49,22 @@ if (r1.error && r2.error && r3.error) {
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+const supabase = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
+  ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+  : null;
+
+if (!supabase) {
+  console.warn('Warning: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not configured. Database sessions will be bypassed or fail.');
+}
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
+
+app.use((req, _res, next) => {
+  console.log(`[HTTP] ${req.method} ${req.path}`);
+  next();
+});
 
 const port = process.env.PORT || 3001;
 
@@ -675,6 +699,9 @@ Return ONLY this structured JSON (no markdown or extra text):
 app.post('/api/sessions/start', async (req, res) => {
   try {
     const { userId, roleFocus, companyFocus } = req.body;
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase client is not configured on the server.' });
+    }
     const { data, error } = await supabase
       .from('interview_sessions')
       .insert({ user_id: userId, role_focus: roleFocus, company_focus: companyFocus, status: 'in_progress' })
@@ -691,6 +718,9 @@ app.post('/api/sessions/start', async (req, res) => {
 app.post('/api/sessions/complete', async (req, res) => {
   try {
     const { sessionId, score } = req.body;
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase client is not configured on the server.' });
+    }
     const { data, error } = await supabase
       .from('interview_sessions')
       .update({ status: 'completed', score: score })
