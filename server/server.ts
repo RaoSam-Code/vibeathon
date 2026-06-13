@@ -1,0 +1,579 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import { tavily } from '@tavily/core';
+import { generateGitHubQuestions } from './github-analyzer.js';
+import { evaluateCanvasDesign } from './canvas-vision-agent.js';
+import { createClient } from '@supabase/supabase-js';
+import { fileURLToPath } from 'url';
+import path from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Absolute path to root .env
+const rootEnvPath = path.resolve(__dirname, '../../.env');
+const localEnvPath = path.resolve(__dirname, '../.env');
+const currentEnvPath = path.resolve(process.cwd(), '.env');
+
+console.log('LOADING ENVS FROM:', { rootEnvPath, localEnvPath, currentEnvPath });
+
+const r1 = dotenv.config({ path: rootEnvPath });
+const r2 = dotenv.config({ path: localEnvPath });
+const r3 = dotenv.config({ path: currentEnvPath });
+
+if (r1.error && r2.error && r3.error) {
+  console.warn('Warning: Could not find .env file in expected locations.');
+}
+
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+const app = express();
+app.use(cors());
+app.use(express.json({ limit: '10mb' }));
+
+const port = process.env.PORT || 3001;
+
+const GROQ_API_KEY = process.env.GROQ_API_KEY || process.env.VITE_GROQ_API_KEY;
+const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const FAST_MODEL = 'llama-3.3-70b-versatile';
+const SMART_MODEL = 'llama-3.3-70b-versatile';
+
+// OpenAI voice names → Groq PlayAI voice names
+const VOICE_MAP: Record<string, string> = {
+  onyx: 'Fritz-PlayAI',
+  nova: 'Celeste-PlayAI',
+  alloy: 'Atlas-PlayAI',
+  echo: 'Hudson-PlayAI',
+  fable: 'Indigo-PlayAI',
+  shimmer: 'Arista-PlayAI',
+};
+
+// ---- Generic Groq LLM caller ----
+async function callGroq(
+  messages: { role: string; content: string }[],
+  model = FAST_MODEL,
+  temperature = 0.7
+): Promise<string> {
+  const res = await fetch(GROQ_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${GROQ_API_KEY}`,
+    },
+    body: JSON.stringify({ model, messages, temperature, max_tokens: 2048 }),
+  });
+  if (!res.ok) throw new Error(`Groq ${res.status}: ${await res.text()}`);
+  const data = await res.json() as any;
+  return data.choices[0].message.content as string;
+}
+
+function extractJSON(raw: string): any   {
+  const match = raw.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+  if (!match) throw new Error('No JSON found in response');
+  return JSON.parse(match[0]);
+}
+
+// --- 1. Tavily Intelligence Agent ---
+app.post('/api/agents/tavily-research', async (req, res) => {
+  try {
+    const { companyName } = req.body;
+    if (!companyName) return res.status(400).json({ error: 'companyName is required' });
+
+    const searchTool = tavily({ apiKey: process.env.TAVILY_API_KEY! });
+    const searchResponse = await searchTool.search(
+      `${companyName} recent news tech product launches 2025`,
+      { maxResults: 3 }
+    );
+    const news = JSON.stringify(searchResponse.results);
+
+    const raw = await callGroq([
+      {
+        role: 'user',
+        content: `You are an expert technical recruiter preparing for an interview with a candidate applying to ${companyName}.
+Here is the latest news about ${companyName}:\n\n${news}\n\n
+Based STRICTLY on this news, generate 2 hyper-relevant challenging interview questions that test the candidate's industry awareness.
+Return ONLY a JSON array of strings: ["question1", "question2"]`
+      }
+    ]);
+
+    const questions = extractJSON(raw);
+    res.json({ questions, raw_news: news });
+  } catch (error: unknown) {
+    console.error('Tavily Agent Error:', (error as Error).message);
+    res.status(500).json({ error: 'Failed to run intelligence agent', detail: (error as Error).message });
+  }
+});
+
+// --- 2. Chat Interviewer (supports single persona and panel mode) ---
+app.post('/api/agents/chat', async (req, res) => {
+  try {
+    const { message, history = [], persona, personas } = req.body;
+    if (!message) return res.status(400).json({ error: 'message is required' });
+
+    let systemPrompt: string;
+    let defaultSpeaker: string;
+
+    if (personas && Array.isArray(personas) && personas.length > 1) {
+      // Panel Attack Mode: multiple personas
+      const panelDesc = personas.map((p: any  ) => `- ${p.name} (${p.desc})`).join('\n');
+      defaultSpeaker = personas[0].name;
+      systemPrompt = `You are a panel of ${personas.length} distinct AI interviewers conducting a technical interview together:
+${panelDesc}
+
+Rules:
+1. Decide which panelist speaks next based on context — rotate naturally or pick whoever is most relevant.
+2. **SMART INTERACTION**: Listen to the user's answer. If they make a mistake, gently point it out. Ask smart follow-up questions based on what they just said.
+3. **MODERATION**: If the user uses offensive, abusive, or highly unprofessional language, immediately STOP the interview logic and sternly warn them as your persona to maintain professionalism.
+4. Speak AS that panelist only — stay in their character and tone.
+5. Ask ONE question at a time. Briefly acknowledge their last answer before moving on.
+6. Keep responses concise and conversational.
+You MUST respond with ONLY a raw JSON object (no markdown): {"speaker": "<panelist name exactly as listed>", "content": "<what they say>"}`;
+    } else {
+      // Single persona mode
+      const personaDesc = (personas && personas[0])
+        ? `${personas[0].name}: ${personas[0].desc}`
+        : (persona || 'Standard Technical Lead');
+      defaultSpeaker = (personas && personas[0]?.name) || 'Interviewer';
+      systemPrompt = `You are an expert AI Interviewer for a Senior Tech Role. Persona: ${personaDesc}.
+Act strictly as the interviewer. Listen closely to the candidate's answer. 
+**SMART INTERACTION**: If they make a mistake, point it out constructively. Ask smart follow-up questions based on their response.
+**MODERATION**: If the user uses offensive, abusive, or highly unprofessional language, immediately STOP the interview logic and sternly warn them to maintain professionalism.
+Ask ONE question at a time. Keep responses concise, conversational, and directly related to the role.
+You MUST respond with ONLY a raw JSON object (no markdown): {"speaker": "${defaultSpeaker}", "content": "<your response>"}`;
+    }
+
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      ...history.map((msg: any  ) => ({ role: msg.role === 'user' ? 'user' : 'assistant', content: msg.content })),
+      { role: 'user', content: message }
+    ];
+
+    const raw = await callGroq(messages, SMART_MODEL, 0.7);
+
+    try {
+      const parsed = extractJSON(raw);
+      const speaker = parsed.speaker || defaultSpeaker;
+      const content = parsed.content || raw;
+      res.json({ content, speaker });
+    } catch {
+      res.json({ content: raw, speaker: defaultSpeaker });
+    }
+  } catch (error: unknown) {
+    console.error('Chat Agent Error:', (error as Error).message);
+    res.status(500).json({ error: 'Failed to generate response', detail: (error as Error).message });
+  }
+});
+
+// --- 3. Evaluator Agent ---
+app.post('/api/agents/evaluate', async (req, res) => {
+  try {
+    const { question, answer } = req.body;
+    if (!question || !answer) return res.status(400).json({ error: 'question and answer are required' });
+
+    const raw = await callGroq([
+      {
+        role: 'user',
+        content: `You are an expert strict interview evaluator.
+Question: "${question}"
+Candidate's answer: "${answer}"
+
+Evaluate on two metrics (0-100):
+1. Content Quality (accuracy, depth, STAR method if behavioral)
+2. Delivery (clarity, structure, confidence)
+
+Return STRICTLY this JSON (no extra text):
+{"score_content": 85, "score_delivery": 70, "feedback": "2 sentences max.", "is_weakness": false}`
+      }
+    ], FAST_MODEL, 0.2);
+
+    const evaluation = extractJSON(raw);
+    res.json(evaluation);
+  } catch (error: unknown) {
+    console.error('Evaluator Agent Error:', (error as Error).message);
+    res.status(500).json({ error: 'Failed to evaluate answer', detail: (error as Error).message });
+  }
+});
+
+// --- 4. GitHub Code Analysis Agent ---
+app.post('/api/agents/github-code-review', async (req, res) => {
+  try {
+    const { githubUsername } = req.body;
+    if (!githubUsername) return res.status(400).json({ error: 'githubUsername is required' });
+
+    const questions = await generateGitHubQuestions(githubUsername);
+    res.json({ questions });
+  } catch (error: unknown) {
+    console.error('GitHub Agent Error:', (error as Error).message);
+    res.status(500).json({ error: 'Failed to analyze GitHub repos', detail: (error as Error).message });
+  }
+});
+
+// --- 5. TTS Agent (Groq PlayAI → raw MP3 audio bytes for Simli PCM16 conversion) ---
+app.post('/api/agents/tts', async (req, res) => {
+  try {
+    const { text, voice = 'nova' } = req.body;
+    if (!text) return res.status(400).json({ error: 'text is required' });
+
+    const groqVoice = VOICE_MAP[voice] ?? VOICE_MAP['nova'];
+
+    const ttsRes = await fetch('https://api.groq.com/openai/v1/audio/speech', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${GROQ_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'playai-tts',
+        input: text,
+        voice: groqVoice,
+        response_format: 'mp3',
+      }),
+    });
+
+    if (!ttsRes.ok) throw new Error(`Groq TTS ${ttsRes.status}: ${await ttsRes.text()}`);
+
+    const buffer = Buffer.from(await ttsRes.arrayBuffer());
+    res.set('Content-Type', 'audio/mpeg');
+    res.send(buffer);
+  } catch (error: unknown) {
+    console.error('TTS Agent Error:', (error as Error).message);
+    res.status(500).json({ error: 'Failed to generate speech', detail: (error as Error).message });
+  }
+});
+
+// --- 6. Canvas Vision Agent (System Design whiteboard evaluation via Groq vision) ---
+app.post('/api/agents/canvas-evaluate', async (req, res) => {
+  try {
+    const { base64Image, currentQuestionContext, previousCanvasStateSummary } = req.body;
+    if (!base64Image || !currentQuestionContext) {
+      return res.status(400).json({ error: 'base64Image and currentQuestionContext are required' });
+    }
+
+    const result = await evaluateCanvasDesign(base64Image, currentQuestionContext, previousCanvasStateSummary);
+    res.json(result);
+  } catch (error: unknown) {
+    console.error('Canvas Vision Agent Error:', (error as Error).message);
+    res.status(500).json({ error: 'Failed to evaluate canvas design', detail: (error as Error).message });
+  }
+});
+
+// --- 7. STT Agent (Groq Whisper speech-to-text) ---
+// Accepts base64-encoded audio (webm/mp3/wav) and returns a transcript.
+// Requires Node.js 18+ for native Blob and FormData support.
+// Supported Groq Whisper formats: flac, mp3, mp4, mpeg, mpga, m4a, ogg, wav, webm
+const SUPPORTED_AUDIO_TYPES: Record<string, string> = {
+  webm: 'audio/webm', mp3: 'audio/mpeg', mp4: 'audio/mp4',
+  mpeg: 'audio/mpeg', mpga: 'audio/mpeg', m4a: 'audio/mp4',
+  ogg: 'audio/ogg', wav: 'audio/wav', flac: 'audio/flac',
+};
+
+app.post('/api/agents/stt', async (req, res) => {
+  try {
+    const { audioBase64, mimeType = 'audio/webm', language = 'en' } = req.body;
+    if (!audioBase64) return res.status(400).json({ error: 'audioBase64 is required' });
+
+    const audioBuffer = Buffer.from(audioBase64, 'base64');
+    const baseMime = mimeType.split(';')[0].trim();
+    const ext = Object.keys(SUPPORTED_AUDIO_TYPES).find(
+      k => SUPPORTED_AUDIO_TYPES[k] === baseMime
+    ) ?? 'webm';
+
+    console.log(`🎙️ STT Request - Base64 Length: ${audioBase64.length}, Buffer Size: ${audioBuffer.length} bytes, Mime: ${baseMime}, Ext: ${ext}`);
+
+    const formData = new FormData();
+    formData.append('file', new Blob([audioBuffer], { type: baseMime }), `audio.${ext}`);
+    formData.append('model', 'whisper-large-v3');
+    formData.append('language', language);
+    formData.append('response_format', 'json');
+
+    const sttRes = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${GROQ_API_KEY}` },
+      body: formData,
+    });
+
+    if (!sttRes.ok) throw new Error(`Groq STT ${sttRes.status}: ${await sttRes.text()}`);
+
+    const data = await sttRes.json() as any;
+    console.log(`📝 STT Result: "${data.text}"`);
+    res.json({ text: data.text });
+  } catch (error: unknown) {
+    console.error('STT Agent Error:', (error as Error).message);
+    res.status(500).json({ error: 'Failed to transcribe audio', detail: (error as Error).message });
+  }
+});
+
+// --- 8. Resume Parser Agent ---
+// Extracts structured data (skills, experience, gaps) from raw resume text.
+app.post('/api/agents/resume-parse', async (req, res) => {
+  try {
+    const { resumeText } = req.body;
+    if (!resumeText) return res.status(400).json({ error: 'resumeText is required' });
+
+    const raw = await callGroq([
+      {
+        role: 'user',
+        content: `You are an expert ATS resume analyst. Parse the following resume and extract structured information.
+
+Resume:
+"""
+${resumeText}
+"""
+
+Return ONLY this JSON (no extra text):
+{
+  "name": "Candidate's full name or null",
+  "skills": ["skill1", "skill2"],
+  "years_of_experience": 0,
+  "education": "Highest degree and institution",
+  "current_role": "Current or most recent job title",
+  "companies": ["company1", "company2"],
+  "key_projects": ["brief description of 1-2 notable projects"],
+  "gaps": ["identified weakness or gap in their profile"],
+  "interview_focus_areas": ["area1", "area2", "area3"]
+}`
+      }
+    ], FAST_MODEL, 0.1);
+
+    const parsed = extractJSON(raw);
+    res.json(parsed);
+  } catch (error: unknown) {
+    console.error('Resume Parser Error:', (error as Error).message);
+    res.status(500).json({ error: 'Failed to parse resume', detail: (error as Error).message });
+  }
+});
+
+// --- 9. Question Generator Agent ---
+// Generates targeted interview questions from resume + JD.
+app.post('/api/agents/generate-questions', async (req, res) => {
+  try {
+    const { resumeText, jdText, role, difficulty, numQuestions = 5 } = req.body;
+    if (!resumeText && !jdText) return res.status(400).json({ error: 'At least one of resumeText or jdText is required' });
+
+    const raw = await callGroq([
+      {
+        role: 'user',
+        content: `You are a world-class technical recruiter preparing for a ${difficulty || 'Medium'} difficulty interview for the role of ${role || 'Software Engineer'}.
+
+Candidate Resume:
+"""
+${resumeText || 'Not provided'}
+"""
+
+Job Description:
+"""
+${jdText || 'Not provided'}
+"""
+
+Generate exactly ${numQuestions} hyper-personalized interview questions that:
+1. Directly reference the candidate's specific past experience/projects from their resume (if available).
+2. Test whether their skills match the JD requirements (if available) given the ${difficulty || 'Medium'} difficulty.
+3. Include a mix of behavioral (STAR), technical, and situational questions.
+4. For each question, identify its type.
+
+Return ONLY a JSON array (no extra text):
+[
+  {"question": "...", "type": "behavioral|technical|situational", "focus": "skill or gap being tested"}
+]`
+      }
+    ], SMART_MODEL, 0.6);
+
+    const questions = extractJSON(raw);
+    res.json({ questions });
+  } catch (error: unknown) {
+    console.error('Question Generator Error:', (error as Error).message);
+    res.status(500).json({ error: 'Failed to generate questions', detail: (error as Error).message });
+  }
+});
+
+// --- 10. Interview Report Generator ---
+// Produces a comprehensive post-interview report from the full conversation history.
+app.post('/api/agents/generate-report', async (req, res) => {
+  try {
+    const { history, durationSeconds = 0, role, company } = req.body;
+    if (!history || !Array.isArray(history) || history.length < 2) {
+      return res.status(400).json({ error: 'history array with at least 2 messages is required' });
+    }
+
+    const transcript = history
+      .map((m: any  ) => `${m.role === 'user' ? 'Candidate' : 'Interviewer'}: ${m.content}`)
+      .join('\n\n');
+
+    const raw = await callGroq([
+      {
+        role: 'user',
+        content: `You are an expert interview coach generating a detailed post-interview report.
+
+Interview Details:
+- Role: ${role || 'Software Engineer'}
+- Company: ${company || 'Tech Company'}
+- Duration: ${Math.round(durationSeconds / 60)} minutes
+
+Full Interview Transcript:
+"""
+${transcript}
+"""
+
+Analyse the interview and return ONLY this JSON (no extra text, all numeric scores are 0-100):
+{
+  "overall_score": 0,
+  "scores": {
+    "content_quality": 0,
+    "communication": 0,
+    "technical_depth": 0,
+    "structure": 0,
+    "confidence": 0
+  },
+  "strengths": ["strength1", "strength2"],
+  "weaknesses": ["weakness1", "weakness2"],
+  "standout_answers": ["brief description of best moment"],
+  "weak_answers": ["brief description of weakest answer and why"],
+  "overall_feedback": "3-4 sentences of honest, actionable feedback.",
+  "improvement_roadmap": ["action1", "action2", "action3"]
+}`
+      }
+    ], SMART_MODEL, 0.2);
+
+    const report = extractJSON(raw);
+    res.json(report);
+  } catch (error: unknown) {
+    console.error('Report Generator Error:', (error as Error).message);
+    res.status(500).json({ error: 'Failed to generate report', detail: (error as Error).message });
+  }
+});
+
+// --- 11. Real-Time Audio Interview Evaluator ---
+app.post('/api/agents/evaluate-answer', async (req, res) => {
+  try {
+    const { userAnswer, currentQuestion, jobDescription, sessionId, userId } = req.body;
+    if (!userAnswer || !currentQuestion) return res.status(400).json({ error: 'userAnswer and currentQuestion are required' });
+
+    console.log(`[Evaluator] Analysing answer for question: "${currentQuestion?.substring(0, 50)}..."`);
+
+    const raw = await callGroq([
+      {
+        role: 'user',
+        content: `You are an expert interview coach analyzing a candidate's verbal response in real-time.
+Question: "${currentQuestion}"
+Candidate Answer: "${userAnswer}"
+Job Context: "${jobDescription || 'General Tech Role'}"
+
+Tasks:
+1. Provide an "optimizedAnswer" that rewrites their answer to sound more professional, succinct, and structured (use STAR method if applicable).
+2. Grade their Tone (Confidence, clarity) on a scale of 0-100.
+3. Grade their Vocabulary (Professionalism, industry keywords) on a scale of 0-100.
+4. Provide a ONE-WORD remark for Tone. MUST BE descriptive (e.g., 'Confident', 'Anxious', 'Clear', 'Hesitant', 'Strong'). DO NOT use 'Analyzing'.
+5. Provide a ONE-WORD remark for Vocabulary. MUST BE descriptive (e.g., 'Sophisticated', 'Nuanced', 'Basic', 'Technical', 'Precise'). DO NOT use 'Standard' unless truly standard.
+6. Provide brief constructive feedback (2-3 bullet points). Use markdown '*' for bullets.
+
+Return ONLY this structured JSON (no markdown or extra text):
+{
+  "optimizedAnswer": "...",
+  "toneScore": 85,
+  "toneRemark": "...",
+  "vocabularyScore": 75,
+  "vocabularyRemark": "...",
+  "feedback": "..."
+}`
+      }
+    ], FAST_MODEL, 0.2);
+
+    console.log(`[Evaluator] Groq Response: ${raw}`);
+    const evaluation = extractJSON(raw);
+
+    res.json(evaluation);
+  } catch (error: unknown) {
+    console.error('Real-Time Evaluator Error:', (error as Error).message);
+    res.status(500).json({ error: 'Failed to evaluate answer', detail: (error as Error).message });
+  }
+});
+
+// --- 12. Session Management ---
+app.post('/api/sessions/start', async (req, res) => {
+  try {
+    const { userId, roleFocus, companyFocus } = req.body;
+    const { data, error } = await supabase
+      .from('interview_sessions')
+      .insert({ user_id: userId, role_focus: roleFocus, company_focus: companyFocus, status: 'in_progress' })
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (err: unknown) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.post('/api/sessions/complete', async (req, res) => {
+  try {
+    const { sessionId, score } = req.body;
+    const { data, error } = await supabase
+      .from('interview_sessions')
+      .update({ status: 'completed', score: score })
+      .eq('id', sessionId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (err: unknown) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// --- Health Check ---
+app.get('/api/health', (_req, res) => {
+  res.json({
+    status: 'ok',
+    groq: !!GROQ_API_KEY,
+    tavily: !!process.env.TAVILY_API_KEY,
+    timestamp: new Date().toISOString(),
+    endpoints: [
+      'POST /api/agents/tavily-research',
+      'POST /api/agents/chat',
+      'POST /api/agents/evaluate',
+      'POST /api/agents/evaluate-answer',
+      'POST /api/agents/github-code-review',
+      'POST /api/agents/tts',
+      'POST /api/agents/canvas-evaluate',
+      'POST /api/agents/stt',
+      'POST /api/agents/resume-parse',
+      'POST /api/agents/generate-questions',
+      'POST /api/agents/generate-report',
+    ],
+  });
+});
+
+app.listen(port, () => {
+  console.log(`🧠 AI Agent Server running on port ${port}`);
+  console.log(`   Groq:   ${GROQ_API_KEY ? '✅' : '❌ missing'}`);
+  console.log(`   Tavily: ${process.env.TAVILY_API_KEY ? '✅' : '❌ missing'}`);
+  console.log('');
+  console.log('   10 Features Ready:');
+  console.log('   1. Company Intelligence   (Tavily + Groq)');
+  console.log('   2. AI Chat Interviewer    (Panel/Single)');
+  console.log('   3. Answer Evaluator       (Score + Feedback)');
+  console.log('   4. GitHub Code Analyzer   (Octokit + Groq)');
+  console.log('   5. Text-to-Speech         (Groq PlayAI)');
+  console.log('   6. Canvas Vision          (Groq Llama 4 Vision)');
+  console.log('   7. Speech-to-Text         (Groq Whisper)');
+  console.log('   8. Resume Parser          (Groq)');
+  console.log('   9. Question Generator     (Resume + JD → Groq)');
+  console.log('  10. Interview Report       (Post-session Analysis)');
+});
+
+// --- Serve Frontend in Production ---
+const frontendDistPath = path.resolve(__dirname, '../../dist');
+app.use(express.static(frontendDistPath));
+
+app.get('*', (req, res) => {
+  res.sendFile(path.join(frontendDistPath, 'index.html'));
+});
+
+export default app;

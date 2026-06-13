@@ -1,0 +1,461 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Satoshi:wght@400;500;700;900&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 213 28% 92%; /* Neumorphic base bg #e0e5ec */
+    --foreground: 215 25% 40%; /* Soft dark slate for text */
+
+    --card: 213 28% 92%;
+    --card-foreground: 215 25% 40%;
+
+    --popover: 213 28% 92%;
+    --popover-foreground: 215 25% 40%;
+
+    --primary: 213 85% 58%; /* Soft blue brand color */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 213 20% 88%;
+    --secondary-foreground: 215 25% 50%;
+
+    --muted: 213 20% 88%;
+    --muted-foreground: 215 20% 60%;
+
+    --accent: 210 80% 60%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 215 30% 25%;
+    --input: 215 30% 25%;
+    --ring: 215 90% 60%;
+
+    --radius: 1rem;
+
+    --sidebar-background: 215 45% 10%;
+    --sidebar-foreground: 210 15% 85%;
+    --sidebar-primary: 215 90% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 215 40% 18%;
+    --sidebar-accent-foreground: 215 15% 90%;
+    --sidebar-border: 215 30% 22%;
+    --sidebar-ring: 215 90% 60%;
+
+    /* Neumorphism Shadow Tokens */
+    --neu-light: #ffffff; /* Top-left highlight */
+    --neu-dark: #a3b1c6; /* Bottom-right shadow */
+    --neu-bg: #e0e5ec; /* Base background */
+    --neu-radius: 20px;
+
+    /* Base Soft Gradients for Buttons */
+    --gradient-convex: linear-gradient(145deg, #f0f5fc, #cbced4);
+    --gradient-concave: linear-gradient(145deg, #cbced4, #f0f5fc);
+  }
+
+  /* We remove the separate dark/light mode concept and hardcode the single soothing neu-theme */
+  .dark {
+  }
+  .light {
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply text-foreground font-sans antialiased;
+    background-color: var(--neu-bg);
+    min-height: 100vh;
+    overflow-x: hidden;
+    /* Soft Neumorphic Primary color Arrow Cursor */
+    cursor: url('data:image/svg+xml;utf8,<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 2L10.3333 22L13.1111 13.1111L22 10.3333L4 2Z" fill="%233b82f6" stroke="white" stroke-width="1.5" stroke-linejoin="round"/></svg>') 4 2, auto;
+  }
+
+  a, button, [role="button"], input[type="submit"], input[type="button"] {
+    /* Slightly glowing variant for clickable items */
+    cursor: url('data:image/svg+xml;utf8,<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 2L10.3333 22L13.1111 13.1111L22 10.3333L4 2Z" fill="%232563eb" stroke="%2393c5fd" stroke-width="2" stroke-linejoin="round"/></svg>') 4 2, pointer !important;
+  }
+}
+
+@layer utilities {
+  /* ===== NEUMORPHISM ===== */
+
+  /* Standard pop-out container */
+  .neu-flat {
+    background-color: var(--neu-bg);
+    border-radius: var(--neu-radius);
+    box-shadow:
+      9px 9px 16px var(--neu-dark),
+      -9px -9px 16px var(--neu-light);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    transition: all 0.3s ease;
+  }
+
+  .neu-flat:hover {
+    box-shadow:
+      12px 12px 20px var(--neu-dark),
+      -12px -12px 20px var(--neu-light);
+    transform: translateY(-2px);
+  }
+
+  /* Deep pressed state for active panels / inputs */
+  .neu-pressed {
+    background-color: var(--neu-bg);
+    border-radius: var(--neu-radius);
+    box-shadow:
+      inset 6px 6px 10px var(--neu-dark),
+      inset -6px -6px 10px var(--neu-light);
+    border: 1px solid transparent; /* Removes sharp edges */
+    transition: all 0.3s ease;
+  }
+
+  /* Massive background pop-out */
+  .neu-hero-flat {
+    background-color: var(--neu-bg);
+    box-shadow: 
+      40px 40px 80px var(--neu-dark), 
+      -40px -40px 80px var(--neu-light);
+  }
+
+  /* Massive background inset */
+  .neu-hero-pressed {
+    background-color: var(--neu-bg);
+    box-shadow: 
+      inset 40px 40px 80px var(--neu-dark), 
+      inset -40px -40px 80px var(--neu-light);
+  }
+
+  /* Pop-out round button (convex) */
+  .neu-convex {
+    background: var(--gradient-convex);
+    border-radius: var(--neu-radius);
+    box-shadow:
+      6px 6px 12px var(--neu-dark),
+      -6px -6px 12px var(--neu-light);
+    transition: all 0.2s ease;
+    border: 1px solid rgba(255, 255, 255, 0.4);
+  }
+
+  .neu-convex.active,
+  .neu-convex:active {
+    background: var(--gradient-concave);
+    box-shadow:
+      inset 4px 4px 8px var(--neu-dark),
+      inset -4px -4px 8px var(--neu-light);
+    border-color: transparent;
+  }
+
+  /* Smaller elements */
+  .neu-sm {
+    border-radius: 12px;
+    box-shadow:
+      4px 4px 8px var(--neu-dark),
+      -4px -4px 8px var(--neu-light);
+  }
+  /* Deprecated Glass utilities (cleaning up for pure neumorphism) */
+  .glass {
+    display: none;
+  }
+  .glass-card {
+    display: none;
+  }
+  .glow-teal,
+  .glow-purple,
+  .glow-warm,
+  .glow-blue {
+    box-shadow: none;
+  }
+  .text-glow,
+  .text-glow-purple {
+    text-shadow: none;
+  }
+  .bg-gradient-purple-teal {
+    background: none;
+  }
+
+  /* ===== ANIMATIONS ===== */
+  @keyframes float {
+    0%,
+    100% {
+      transform: translateY(0px);
+    }
+    50% {
+      transform: translateY(-12px);
+    }
+  }
+
+  @keyframes float-slow {
+    0%,
+    100% {
+      transform: translateY(0px) rotate(0deg);
+    }
+    33% {
+      transform: translateY(-8px) rotate(1deg);
+    }
+    66% {
+      transform: translateY(-4px) rotate(-1deg);
+    }
+  }
+
+  @keyframes pulse-glow {
+    0%,
+    100% {
+      box-shadow:
+        0 0 20px -5px hsl(168 100% 48% / 0.3),
+        inset 0 1px 0 hsl(0 0% 100% / 0.08);
+    }
+    50% {
+      box-shadow:
+        0 0 50px -5px hsl(168 100% 48% / 0.5),
+        inset 0 1px 0 hsl(0 0% 100% / 0.12);
+    }
+  }
+
+  @keyframes shimmer {
+    0% {
+      background-position: -200% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
+  }
+
+  @keyframes liquid-fill {
+    0% {
+      transform: translateY(100%);
+    }
+    100% {
+      transform: translateY(0%);
+    }
+  }
+
+  @keyframes ambient-drift {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+      opacity: 0.3;
+    }
+    25% {
+      transform: translate(30px, -20px) scale(1.1);
+      opacity: 0.5;
+    }
+    50% {
+      transform: translate(-20px, -40px) scale(0.9);
+      opacity: 0.4;
+    }
+    75% {
+      transform: translate(20px, -10px) scale(1.05);
+      opacity: 0.35;
+    }
+  }
+
+  @keyframes ripple {
+    0% {
+      transform: scale(0);
+      opacity: 0.6;
+    }
+    100% {
+      transform: scale(4);
+      opacity: 0;
+    }
+  }
+
+  @keyframes orbit {
+    0% {
+      transform: rotate(0deg) translateX(var(--orbit-radius, 100px))
+        rotate(0deg);
+    }
+    100% {
+      transform: rotate(360deg) translateX(var(--orbit-radius, 100px))
+        rotate(-360deg);
+    }
+  }
+
+  @keyframes liquid-border {
+    0%,
+    100% {
+      border-image-source: linear-gradient(
+        0deg,
+        hsl(168 100% 48% / 0.3),
+        hsl(270 70% 65% / 0.1)
+      );
+    }
+    50% {
+      border-image-source: linear-gradient(
+        180deg,
+        hsl(270 70% 65% / 0.3),
+        hsl(168 100% 48% / 0.1)
+      );
+    }
+  }
+
+  @keyframes spinner-liquid {
+    0% {
+      transform: rotate(0deg);
+    }
+    100% {
+      transform: rotate(360deg);
+    }
+  }
+
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+  .animate-float-slow {
+    animation: float-slow 8s ease-in-out infinite;
+  }
+  .animate-pulse-glow {
+    animation: pulse-glow 3s ease-in-out infinite;
+  }
+  .animate-shimmer {
+    background: linear-gradient(
+      90deg,
+      transparent,
+      hsl(0 0% 100% / 0.06),
+      transparent
+    );
+    background-size: 200% 100%;
+    animation: shimmer 3s ease-in-out infinite;
+  }
+  .animate-ambient {
+    animation: ambient-drift 20s ease-in-out infinite;
+  }
+  .animate-orbit {
+    animation: orbit var(--orbit-duration, 30s) linear infinite;
+  }
+
+  /* ===== NEU BUTTON (3D Glass Style) ===== */
+  .btn-neu {
+    @apply relative overflow-hidden font-bold text-slate-800 flex items-center justify-center;
+    background: rgba(255, 255, 255, 0.4);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-radius: 9999px; /* Pill shape */
+    box-shadow: 
+      inset 0px 2px 4px rgba(255, 255, 255, 0.8), 
+      inset 0px -2px 4px rgba(0, 0, 0, 0.05),
+      0px 4px 10px rgba(0, 0, 0, 0.08); /* 3D Glass Look */
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .btn-neu:hover {
+    box-shadow: 
+      inset 0px 3px 6px rgba(255, 255, 255, 0.9), 
+      inset 0px -2px 4px rgba(0, 0, 0, 0.05),
+      0px 6px 15px rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
+    background: rgba(255, 255, 255, 0.5);
+  }
+
+  .btn-neu:active {
+    box-shadow: 
+      inset 0px 4px 8px rgba(0, 0, 0, 0.1), 
+      inset 0px -2px 4px rgba(255, 255, 255, 0.5),
+      0px 2px 4px rgba(0, 0, 0, 0.05);
+    transform: translateY(1px);
+  }
+
+  /* ===== NEU PRIMARY BRAND BUTTON (Frosted Glass Overlay Style) ===== */
+  .btn-neu-primary {
+    @apply relative overflow-hidden font-bold flex items-center justify-center;
+    /* Light frosted glass background */
+    background: rgba(255, 255, 255, 0.4); 
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-radius: 9999px;
+    
+    /* White borders to simulate the glass edge */
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-top: 1px solid rgba(255, 255, 255, 0.8);
+    border-left: 1px solid rgba(255, 255, 255, 0.8);
+
+    /* Subtle drop shadow and inner white bevel */
+    box-shadow: 
+      inset 2px 2px 4px rgba(255, 255, 255, 0.7),
+      0px 8px 16px -4px rgba(0, 0, 0, 0.1);
+
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    color: #0f172a; /* Dark text for contrast */
+    text-shadow: 0px 1px 2px rgba(255, 255, 255, 0.5);
+  }
+
+  /* The vibrant color blob behind the glass */
+  .btn-neu-primary::before {
+    content: '';
+    position: absolute;
+    /* Positioned towards the right side like the orange card in the image */
+    top: 0;
+    right: 0;
+    width: 65%;
+    height: 100%;
+    /* Vibrant primary blue */
+    background: #3b82f6; 
+    border-radius: inherit;
+    /* Heavily blur it so it looks like it's viewed through frosted glass */
+    filter: blur(16px);
+    z-index: -1;
+    transition: all 0.4s ease;
+  }
+
+  .btn-neu-primary:hover {
+    box-shadow: 
+      inset 2px 2px 6px rgba(255, 255, 255, 0.9),
+      0px 10px 20px -4px rgba(59, 130, 246, 0.3);
+    transform: translateY(-2px);
+  }
+
+  /* Make the blob expand/shift on hover for a dynamic feel */
+  .btn-neu-primary:hover::before {
+    width: 80%;
+    filter: blur(20px);
+    background: #2563eb;
+  }
+
+  .btn-neu-primary:active {
+    transform: translateY(1px);
+    box-shadow: 
+      inset 2px 2px 4px rgba(255, 255, 255, 0.5),
+      0px 4px 8px -2px rgba(0, 0, 0, 0.05);
+  }
+  
+  .btn-neu-primary:active::before {
+    width: 100%;
+    filter: blur(12px);
+  }
+
+  /* ===== CUSTOM SCROLLBAR for Neumorphism ===== */
+  ::-webkit-scrollbar {
+    width: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--neu-bg);
+    box-shadow:
+      inset 3px 3px 6px var(--neu-dark),
+      inset -3px -3px 6px var(--neu-light);
+    border-radius: 5px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--neu-bg);
+    border-radius: 5px;
+    box-shadow:
+      2px 2px 4px var(--neu-dark),
+      -2px -2px 4px var(--neu-light);
+    border: 2px solid var(--neu-bg);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(213 20% 88%);
+  }
+
+  .bg-deep-space {
+    background-color: var(--neu-bg);
+    position: relative;
+  }
+}
+
