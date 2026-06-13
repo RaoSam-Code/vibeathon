@@ -16,6 +16,7 @@
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
+    "@types/multer": "^2.1.0",
     "@types/node": "^25.3.2",
     "typescript": "^5.9.3"
   },
@@ -27,6 +28,8 @@
     "cors": "^2.8.6",
     "dotenv": "^16.6.1",
     "express": "^5.2.1",
-    "octokit": "^5.0.5"
+    "multer": "^2.1.1",
+    "octokit": "^5.0.5",
+    "pdf-parse": "^2.4.5"
   }
 }

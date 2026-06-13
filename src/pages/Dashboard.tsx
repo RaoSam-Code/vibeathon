@@ -8,12 +8,12 @@ import {
   Target, Brain, Users, TrendingUp, AlertCircle,
   ChevronRight, Star, CheckCircle2, Shield,
   Share2, Download, Trophy, XCircle, AlertTriangle, BrainCircuit,
-  LayoutDashboard, MessageSquare, Briefcase, ArrowUpRight, StopCircle, RefreshCw, Upload, Eye, LogOut
+  LayoutDashboard, MessageSquare, Briefcase, ArrowUpRight, StopCircle, RefreshCw, Upload, Eye, LogOut, Loader2, Sparkles
 } from "lucide-react";
 import { CursorGlow, NeuCard, NeuButton, NeuBackground } from "@/components/LiquidGlass";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from "@/contexts/AuthContext";
-import { getInterviewSessions, getUserProfile, getUserMemories } from "@/lib/api";
+import { getInterviewSessions, getUserProfile, getUserMemories, API_URL } from "@/lib/api";
 
 /* ===== SIDEBAR ===== */
 const Sidebar = ({ activeTab, setActiveTab, onSignOut }: { activeTab: string, setActiveTab: (t: string) => void, onSignOut: () => void }) => (
@@ -35,7 +35,7 @@ const Sidebar = ({ activeTab, setActiveTab, onSignOut }: { activeTab: string, se
         { icon: Target, label: "Skill Map" },
         { icon: Users, label: "Panel Mode" },
         { icon: Brain, label: "Memory Bank" },
-        { icon: LayoutDashboard, label: "Jobie Overview" },
+        { icon: FileText, label: "AI Resume Analyzer" },
       ].map((item) => (
         <button
           key={item.label}
@@ -247,7 +247,7 @@ const NewInterviewView = ({ sessions, profile }: { sessions: any  [], profile: a
                     <div className="text-center relative z-20 flex flex-col items-center">
                       <p className="text-sm font-bold text-slate-800">{resumeFile.name}</p>
                       <div className="flex items-center justify-center gap-3 mt-2">
-                        <span className="text-xs font-semibold text-green-600">Ready for analysis</span>
+                        <span className="text-xs font-semibold text-green-600">Ready for AI Analysis</span>
                         <button
                           onClick={(e) => { e.preventDefault(); e.stopPropagation(); setResumeFile(null); }}
                           className="flex items-center gap-1 text-xs font-bold text-red-500 hover:text-red-700 bg-red-500/10 hover:bg-red-500/20 px-2 py-1 rounded-md transition-colors cursor-pointer"
@@ -592,6 +592,422 @@ const MemoryBankView = ({ memories }: { memories: any  [] }) => (
 );
 
 
+
+/* ===== VIEW: RESUME ANALYZER ===== */
+const ResumeAnalyzerView = () => {
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [jdText, setJdText] = useState("");
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const [result, setResult] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loadingStepIdx, setLoadingStepIdx] = useState(0);
+
+  const loadingSteps = [
+    "Initializing ATS analyzer engine...",
+    "Extracting and cleaning text from resume PDF...",
+    "Cross-referencing resume text with target Job Description...",
+    "Scanning for missing industry keywords and technical skills...",
+    "Evaluating semantic match and job profile alignment...",
+    "Compiling critical ATS recommendation checklists...",
+    "Finalizing match score and generating report..."
+  ];
+
+  useEffect(() => {
+    if (!isAnalyzing) {
+      setLoadingStepIdx(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setLoadingStepIdx((prev) => (prev + 1) % loadingSteps.length);
+    }, 2200);
+    return () => clearInterval(interval);
+  }, [isAnalyzing]);
+
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      const file = e.dataTransfer.files[0];
+      if (file.type === "application/pdf") {
+        setResumeFile(file);
+        setError(null);
+      } else {
+        setError("Only PDF files are supported for resume analysis.");
+      }
+    }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      if (file.type === "application/pdf") {
+        setResumeFile(file);
+        setError(null);
+      } else {
+        setError("Only PDF files are supported for resume analysis.");
+      }
+    }
+  };
+
+  const handleAnalyze = async () => {
+    if (!resumeFile) {
+      setError("Please upload a resume in PDF format.");
+      return;
+    }
+    if (!jdText.trim()) {
+      setError("Please paste the Job Description to analyze match.");
+      return;
+    }
+
+    setIsAnalyzing(true);
+    setError(null);
+    setResult(null);
+
+    const formData = new FormData();
+    formData.append("resume", resumeFile);
+    formData.append("jdText", jdText);
+
+    try {
+      const res = await fetch(`${API_URL}api/agents/analyze-resume`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || "Failed to analyze resume");
+      }
+
+      const data = await res.json();
+      setResult(data);
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || "An error occurred while analyzing the resume.");
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const handleRetake = () => {
+    setResult(null);
+    setResumeFile(null);
+    setError(null);
+  };
+
+  // State-based render selection
+  // 1. Loading state
+  if (isAnalyzing) {
+    return (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="flex flex-col items-center justify-center min-h-[500px] w-full max-w-2xl mx-auto text-center p-8"
+      >
+        <div className="relative w-32 h-32 flex items-center justify-center mb-8">
+          {/* Outer rotating ring */}
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ repeat: Infinity, duration: 3, ease: "linear" }}
+            className="absolute inset-0 rounded-full border-4 border-slate-200 border-t-blue-500 border-r-blue-500"
+          />
+          {/* Inner counter-rotating ring */}
+          <motion.div
+            animate={{ rotate: -360 }}
+            transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
+            className="absolute w-24 h-24 rounded-full border-4 border-slate-200 border-b-purple-500 border-l-purple-500"
+          />
+          {/* Pulsing center */}
+          <div className="w-16 h-16 rounded-full bg-blue-500/10 flex items-center justify-center shadow-inner animate-pulse">
+            <Sparkles className="w-6 h-6 text-blue-600 animate-spin" style={{ animationDuration: "8s" }} />
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <h3 className="text-xl font-display font-black text-slate-800 tracking-tight">AI Agent Audit in Progress</h3>
+          <p className="text-sm font-semibold text-blue-500 h-6 transition-all duration-300 animate-pulse">
+            {loadingSteps[loadingStepIdx]}
+          </p>
+          <div className="max-w-md mx-auto p-4 neu-pressed rounded-xl bg-white/20">
+            <p className="text-xs text-slate-500 font-medium leading-relaxed">
+              Our advanced ATS model is analyzing your layout, extracting parsing data, matching skills semantically, and running compliance heuristics. This usually takes around 5-15 seconds.
+            </p>
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
+
+  // 2. Results Dashboard state
+  if (result) {
+    const score = result.ats_score || 0;
+    const isHigh = score >= 80;
+    const isMedium = score >= 60 && score < 80;
+
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="w-full space-y-6"
+      >
+        {/* Results Header */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-200 pb-5">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl neu-pressed text-blue-600">
+              <BarChart3 className="h-5.5 w-5.5" />
+            </div>
+            <div>
+              <h2 className="font-display text-2xl font-black text-slate-800 tracking-tight">ATS Audit Report</h2>
+              <p className="text-sm font-semibold text-slate-500">Comprehensive AI alignment breakdown and score</p>
+            </div>
+          </div>
+          <NeuButton
+            onClick={handleRetake}
+            className="flex items-center gap-2 px-5 py-2.5 hover:scale-105 transition-all text-slate-700 font-bold border border-slate-300"
+          >
+            <RefreshCw className="h-4 w-4" /> Re-upload & Retake
+          </NeuButton>
+        </div>
+
+        {/* Dashboard Grid */}
+        <div className="grid gap-6 lg:grid-cols-12">
+          {/* Left Column: Match Score Circle */}
+          <div className="lg:col-span-4 flex flex-col gap-6">
+            <NeuCard className="p-8 flex flex-col items-center justify-center text-center h-full min-h-[320px]">
+              <span className="text-[11px] font-black tracking-widest text-slate-400 uppercase mb-6">ATS Match Score</span>
+              
+              <div className="relative w-44 h-44 mb-6">
+                <svg className="w-full h-full transform -rotate-90">
+                  <circle cx="88" cy="88" r="76" stroke="currentColor" strokeWidth="10" fill="transparent" className="text-slate-100" />
+                  <motion.circle
+                    cx="88"
+                    cy="88"
+                    r="76"
+                    stroke="currentColor"
+                    strokeWidth="10"
+                    fill="transparent"
+                    initial={{ strokeDashoffset: 478 }}
+                    animate={{ strokeDashoffset: 478 - (478 * score) / 100 }}
+                    transition={{ duration: 1.5, ease: "easeOut" }}
+                    strokeDasharray="478"
+                    className={`transition-all duration-1000 ${
+                      isHigh ? "text-emerald-500" : isMedium ? "text-blue-500" : "text-rose-500"
+                    }`}
+                    strokeLinecap="round"
+                  />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="text-5xl font-black text-slate-800 tracking-tight">{score}</span>
+                  <span className="text-xs font-bold text-slate-400 mt-1">/ 100</span>
+                </div>
+              </div>
+
+              <div className={`px-5 py-2 rounded-full text-xs font-black shadow-[2px_3px_5px_rgba(163,177,198,0.4),_inset_0_2px_4px_rgba(255,255,255,0.9)] border ${
+                isHigh
+                  ? "bg-gradient-to-br from-emerald-50 to-emerald-100/60 text-emerald-600 border-emerald-200"
+                  : isMedium
+                    ? "bg-gradient-to-br from-blue-50 to-blue-100/60 text-blue-600 border-blue-200"
+                    : "bg-gradient-to-br from-rose-50 to-rose-100/60 text-rose-600 border-rose-200"
+              }`}>
+                {isHigh ? "Highly Matched" : isMedium ? "Moderate Match" : "Weak Match"}
+              </div>
+            </NeuCard>
+          </div>
+
+          {/* Right Column: Profile Summary & Keywords */}
+          <div className="lg:col-span-8 flex flex-col gap-6">
+            {/* Profile Summary */}
+            {result.profile_summary && (
+              <NeuCard className="p-6 space-y-3 flex-1 flex flex-col justify-center">
+                <div className="flex items-center gap-2 mb-1">
+                  <FileText className="h-4.5 w-4.5 text-blue-500" />
+                  <h4 className="text-xs font-black tracking-widest text-slate-400 uppercase">Profile Summary Analysis</h4>
+                </div>
+                <p className="text-sm font-semibold text-slate-600 leading-relaxed italic border-l-4 border-blue-400 pl-4 py-1">
+                  "{result.profile_summary}"
+                </p>
+              </NeuCard>
+            )}
+
+            {/* Missing Keywords */}
+            <NeuCard className="p-6 space-y-4 flex-1">
+              <div className="flex items-center gap-2">
+                <BrainCircuit className="h-4.5 w-4.5 text-purple-500" />
+                <h4 className="text-xs font-black tracking-widest text-slate-400 uppercase">Missing Keywords & Skills Gaps</h4>
+              </div>
+              
+              {result.missing_keywords && result.missing_keywords.length > 0 ? (
+                <div className="flex flex-wrap gap-2.5">
+                  {result.missing_keywords.map((kw: string, i: number) => (
+                    <span
+                      key={i}
+                      className="px-3.5 py-1.5 rounded-full text-xs font-extrabold tracking-wide text-rose-600 bg-gradient-to-br from-rose-50 to-rose-100/60 border border-rose-200 shadow-[2px_3px_5px_rgba(163,177,198,0.3),_inset_0_2px_4px_rgba(255,255,255,0.9)] hover:scale-105 transition-all select-none cursor-default"
+                    >
+                      {kw}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex items-center gap-3 p-4 bg-emerald-50 rounded-xl border border-emerald-100 text-emerald-700">
+                  <CheckCircle2 className="w-5 h-5 shrink-0" />
+                  <span className="text-xs font-bold">Awesome! No major missing keywords identified. Your resume matches the job semantics extremely well.</span>
+                </div>
+              )}
+            </NeuCard>
+          </div>
+        </div>
+
+        {/* Bottom Section: Recommendations Roadmap */}
+        {result.recommendations && result.recommendations.length > 0 && (
+          <NeuCard className="p-7 space-y-5">
+            <div className="flex items-center gap-2 border-b border-slate-200/50 pb-3">
+              <Target className="h-5 w-5 text-blue-500" />
+              <h4 className="text-xs font-black tracking-widest text-slate-400 uppercase">ATS Optimization Roadmap</h4>
+            </div>
+            
+            <div className="grid gap-4 md:grid-cols-2">
+              {result.recommendations.map((rec: string, i: number) => (
+                <div key={i} className="flex gap-3.5 items-start p-4 bg-gradient-to-br from-slate-50 to-slate-100/50 rounded-2xl border border-slate-200/40 shadow-sm hover:scale-[1.01] transition-transform">
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600 font-black text-xs shadow-[inset_0_1.5px_2px_white] border border-blue-200">
+                    {i + 1}
+                  </div>
+                  <p className="text-xs font-bold text-slate-600 leading-relaxed">{rec}</p>
+                </div>
+              ))}
+            </div>
+          </NeuCard>
+        )}
+
+        {/* End Actions */}
+        <div className="flex justify-center pt-4">
+          <NeuButton
+            variant="primary"
+            onClick={handleRetake}
+            className="text-white px-10 py-3.5 font-bold flex items-center gap-2 hover:scale-105 transition-transform"
+          >
+            <RefreshCw className="w-4 h-4" /> Analyze Another Resume
+          </NeuButton>
+        </div>
+      </motion.div>
+    );
+  }
+
+  // 3. Upload/Input Form state (Default)
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="w-full max-w-4xl mx-auto space-y-6"
+    >
+      <div className="flex items-center gap-3">
+        <div className="flex h-11 w-11 items-center justify-center rounded-xl neu-pressed text-blue-600">
+          <FileText className="h-5.5 w-5.5" />
+        </div>
+        <div>
+          <h2 className="font-display text-2xl font-black text-slate-800 tracking-tight">ATS Resume Matcher</h2>
+          <p className="text-sm font-semibold text-slate-500">Benchmark your resume relevance against any target job posting</p>
+        </div>
+      </div>
+
+      <NeuCard className="p-8 space-y-6">
+        <div className="space-y-3">
+          <label className="text-sm font-bold text-slate-700 block">1. Upload Resume (PDF only)</label>
+          <div
+            className={`relative flex flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed p-8 transition-all min-h-[180px] cursor-pointer ${
+              dragActive ? "border-blue-500 bg-blue-50/50" : "border-slate-300 hover:border-blue-400 hover:bg-blue-50/20"
+            }`}
+            onDragEnter={handleDrag}
+            onDragLeave={handleDrag}
+            onDragOver={handleDrag}
+            onDrop={handleDrop}
+          >
+            <input
+              type="file"
+              id="ats-resume-upload"
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              accept=".pdf"
+              onChange={handleChange}
+            />
+            
+            <div className={`flex h-14 w-14 items-center justify-center rounded-2xl ${
+              resumeFile ? "neu-convex text-emerald-500" : "neu-flat text-blue-500"
+            }`}>
+              {resumeFile ? <CheckCircle2 className="h-6 w-6 animate-pulse" /> : <Upload className="h-6 w-6" />}
+            </div>
+
+            {resumeFile ? (
+              <div className="text-center relative z-20 flex flex-col items-center max-w-md">
+                <p className="text-sm font-bold text-slate-800 truncate max-w-xs">{resumeFile.name}</p>
+                <p className="text-xs font-semibold text-slate-400 mt-1">{(resumeFile.size / 1024).toFixed(1)} KB • PDF Format</p>
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setResumeFile(null);
+                  }}
+                  className="mt-3 text-xs font-black text-red-500 hover:text-red-700 bg-red-500/10 px-3 py-1 rounded-md transition-colors"
+                >
+                  Remove File
+                </button>
+              </div>
+            ) : (
+              <div className="text-center">
+                <p className="text-sm font-bold text-slate-700">Drag & drop your resume PDF here, or click to browse</p>
+                <p className="text-xs font-semibold text-slate-400 mt-1.5">PDF format up to 5MB required for extraction</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <label className="text-sm font-bold text-slate-700 block">2. Target Job Description</label>
+          <NeuCard variant="pressed" className="p-4">
+            <textarea
+              rows={8}
+              value={jdText}
+              onChange={(e) => setJdText(e.target.value)}
+              placeholder="Paste the target Job Description or requirements profile here to scan for semantic keyword alignment and gap evaluation..."
+              className="w-full bg-transparent p-0 text-sm font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none resize-none leading-relaxed"
+            />
+          </NeuCard>
+        </div>
+
+        {error && (
+          <div className="p-4 rounded-xl bg-rose-50 border border-rose-100 flex items-start gap-2.5 text-rose-600 text-xs font-semibold">
+            <AlertCircle className="w-4.5 h-4.5 shrink-0 mt-0.5" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <div className="pt-2">
+          <NeuButton
+            variant="primary"
+            className="w-full py-4 text-white text-sm font-bold flex items-center justify-center gap-2 hover:scale-[1.01] transition-transform"
+            onClick={handleAnalyze}
+            disabled={isAnalyzing || !resumeFile || !jdText.trim()}
+          >
+            <Sparkles className="w-4.5 h-4.5" /> Run ATS Audit
+          </NeuButton>
+        </div>
+      </NeuCard>
+    </motion.div>
+  );
+};
+
+
 /* ===== MAIN DASHBOARD ===== */
 const Dashboard = () => {
   const [activeTab, setActiveTab] = useState("New Interview");
@@ -604,7 +1020,7 @@ const Dashboard = () => {
   const [loadingData, setLoadingData] = useState(true);
 
   // Calculate dynamic scroll progress based on the active tab index
-  const tabList = ["New Interview", "Past Sessions", "Progress Hub", "Skill Map", "Panel Mode", "Memory Bank", "Jobie Overview"];
+  const tabList = ["New Interview", "Past Sessions", "Progress Hub", "Skill Map", "Panel Mode", "Memory Bank", "AI Resume Analyzer"];
   const currentTabIdx = tabList.indexOf(activeTab);
   const targetProgress = currentTabIdx / Math.max(1, tabList.length - 1);
 
@@ -694,6 +1110,7 @@ const Dashboard = () => {
               {activeTab === "Skill Map" && <SkillMapView sessions={sessions} />}
               {activeTab === "Panel Mode" && <PanelModeView />}
               {activeTab === "Memory Bank" && <MemoryBankView memories={memories} />}
+              {activeTab === "AI Resume Analyzer" && <ResumeAnalyzerView />}
             </motion.div>
           </AnimatePresence>
         </div>

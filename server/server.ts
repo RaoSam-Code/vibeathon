@@ -8,6 +8,12 @@ import { evaluateCanvasDesign } from './canvas-vision-agent.js';
 import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'url';
 import path from 'path';
+import multer from 'multer';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const pdfParse = require('pdf-parse');
+
+
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -345,6 +351,88 @@ Return ONLY this JSON (no extra text):
   } catch (error: unknown) {
     console.error('Resume Parser Error:', (error as Error).message);
     res.status(500).json({ error: 'Failed to parse resume', detail: (error as Error).message });
+  }
+});
+
+// --- 8b. ATS Resume Analyzer and Matcher ---
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+});
+
+app.post('/api/agents/analyze-resume', upload.single('resume'), async (req: any, res: any) => {
+  try {
+    const { jdText } = req.body;
+    const file = req.file;
+
+    if (!file) {
+      return res.status(400).json({ error: 'Resume PDF file is required' });
+    }
+    if (!jdText) {
+      return res.status(400).json({ error: 'Job Description is required' });
+    }
+
+    // Extract text from PDF buffer
+    let rawText = '';
+    try {
+      const pdfInstance = new pdfParse.PDFParse(new Uint8Array(file.buffer));
+      const parsedObj = await pdfInstance.getText();
+      rawText = parsedObj.text || '';
+    } catch (parseError: any) {
+      console.error('PDF Parse Error:', parseError.message);
+      return res.status(400).json({ error: 'Failed to read PDF file. Make sure it is not corrupted or password-protected.' });
+    }
+
+    if (!rawText || rawText.trim().length === 0) {
+      return res.status(400).json({ error: 'The uploaded PDF appears to be empty or contains unreadable text.' });
+    }
+
+    // Clean extracted text (remove excessive whitespaces/special characters)
+    const cleanedResumeText = rawText
+      .replace(/\s+/g, ' ')
+      .replace(/[^\x20-\x7E\n]/g, '') // remove non-printable ASCII characters
+      .trim();
+
+    // Call LLM for ATS Evaluation
+    const systemPrompt = `Act as a highly strict and technical ATS (Applicant Tracking System). Evaluate the following Resume Text against the provided Job Description. You must return the output EXACTLY as a JSON object with the following keys:
+- "ats_score": (integer from 0-100 indicating the match percentage)
+- "missing_keywords": (array of strings, listing important skills/keywords present in JD but missing in the resume)
+- "profile_summary": (a brief 2-sentence professional summary of the candidate)
+- "recommendations": (an array of 3 actionable tips for the candidate to improve their resume for this specific JD)
+
+Do not add any preamble, markdown code blocks, or extra text. Return ONLY the JSON object.`;
+
+    const userPrompt = `Job Description:
+"""
+${jdText}
+"""
+
+Resume Text:
+"""
+${cleanedResumeText}
+"""`;
+
+    const rawResponse = await callGroq([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ], SMART_MODEL, 0.2);
+
+    let parsedResult;
+    try {
+      parsedResult = extractJSON(rawResponse);
+    } catch (jsonError) {
+      console.error('Failed to parse LLM JSON:', rawResponse);
+      return res.status(500).json({ 
+        error: 'Failed to generate a valid structured response from the AI.', 
+        rawResponse 
+      });
+    }
+
+    res.json(parsedResult);
+
+  } catch (error: any) {
+    console.error('ATS Scorer Error:', error.message);
+    res.status(500).json({ error: 'Failed to analyze resume', detail: error.message });
   }
 });
 
