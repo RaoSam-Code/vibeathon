@@ -8,7 +8,7 @@ import {
   Target, Brain, Users, TrendingUp, AlertCircle,
   ChevronRight, Star, CheckCircle2, Shield,
   Share2, Download, Trophy, XCircle, AlertTriangle, BrainCircuit,
-  LayoutDashboard, MessageSquare, Briefcase, ArrowUpRight, StopCircle, RefreshCw, Upload, Eye, LogOut, Loader2, Sparkles
+  LayoutDashboard, MessageSquare, Briefcase, ArrowUpRight, StopCircle, RefreshCw, Upload, Eye, LogOut, Loader2, Sparkles, Mic
 } from "lucide-react";
 import { CursorGlow, NeuCard, NeuButton, NeuBackground } from "@/components/LiquidGlass";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -130,38 +130,8 @@ const RecentSessionCard = ({ id, title, score, date, tags }: { id: string; title
   </Link>
 );
 
-const NewInterviewView = ({ sessions, profile }: { sessions: any  [], profile: any   }) => {
+const NewInterviewView = ({ sessions, profile, setActiveTab }: { sessions: any[], profile: any, setActiveTab: (t: string) => void }) => {
   const navigate = useNavigate();
-  const [step, setStep] = useState<"upload" | "configure" | "ready" | "generating">("upload");
-  const [resumeFile, setResumeFile] = useState<File | null>(null);
-  const [jobDescription, setJobDescription] = useState("");
-  const [dragActive, setDragActive] = useState(false);
-
-  const handleDrag = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setDragActive(true);
-    } else if (e.type === "dragleave") {
-      setDragActive(false);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      setResumeFile(e.dataTransfer.files[0]);
-    }
-  };
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    e.preventDefault();
-    if (e.target.files && e.target.files[0]) {
-      setResumeFile(e.target.files[0]);
-    }
-  };
 
   return (
     <>
@@ -184,150 +154,83 @@ const NewInterviewView = ({ sessions, profile }: { sessions: any  [], profile: a
                 <p className="mt-1 text-xs font-bold text-blue-500">{stat.change}</p>
               </NeuCard>
             </motion.div>
-          )
+          );
         })}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-5">
-        <div className="lg:col-span-3">
-          <NeuCard className="p-8">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl neu-pressed text-blue-600">
-                  <BrainCircuit className="h-5 w-5" />
-                </div>
-                <div>
-                  <h2 className="font-display text-xl font-bold text-slate-800">Start New Mock Interview</h2>
-                  <p className="text-sm font-semibold text-slate-500">Upload your resume & paste the job description</p>
-                </div>
-              </div>
-
-              <NeuButton
-                variant="primary"
-                className="px-6 py-2 bg-blue-600 text-white font-bold"
+        <div className="lg:col-span-3 space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            {/* Interactive Audio Coach Launch Card */}
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }} 
+              animate={{ opacity: 1, scale: 1 }} 
+              transition={{ delay: 0.1 }}
+            >
+              <NeuCard 
+                className="p-6 h-full flex flex-col justify-between hover:scale-[1.02] transition-transform duration-300 cursor-pointer"
                 onClick={() => navigate('/audio-setup')}
               >
-                Launch Audio Coach &rarr;
-              </NeuButton>
-            </div>
-
-            <div className="mt-6 flex gap-2">
-              {(["upload", "configure", "ready"] as const).map((s, i) => (
-                <div key={s} className="flex flex-1 items-center gap-2">
-                  <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold transition-all duration-500 ${step === s ? "neu-convex text-blue-600" : i < ["upload", "configure", "ready"].indexOf(step) ? "neu-flat text-blue-500" : "neu-pressed text-slate-400"
-                    }`}>
-                    {i + 1}
+                <div>
+                  <div className="h-12 w-12 rounded-2xl neu-pressed text-blue-600 flex items-center justify-center mb-5">
+                    <Mic className="h-6 w-6" />
                   </div>
-                  <span className={`text-xs font-bold capitalize hidden sm:inline ${step === s ? 'text-slate-800' : 'text-slate-400'}`}>{s}</span>
-                  {i < 2 && <ChevronRight className="h-3 w-3 text-slate-300 ml-auto" />}
+                  <h3 className="font-display text-lg font-black text-slate-800 mb-2">Interactive Audio Coach</h3>
+                  <p className="text-xs font-semibold text-slate-500 leading-relaxed">
+                    Practice speaking with an AI voice coach. Get real-time feedback on your pacing, vocabulary, STAR structure, and confidence.
+                  </p>
                 </div>
-              ))}
-            </div>
-
-            {step === "upload" && (
-              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-6 space-y-4">
-                <div
-                  className={`relative flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed p-8 transition-all ${dragActive ? 'border-blue-500 bg-blue-50/50' : 'border-slate-300 hover:border-blue-400 hover:bg-blue-50'} group`}
-                  onDragEnter={handleDrag}
-                  onDragLeave={handleDrag}
-                  onDragOver={handleDrag}
-                  onDrop={handleDrop}
-                >
-                  <input
-                    type="file"
-                    id="resume-upload"
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    accept=".pdf,.doc,.docx"
-                    onChange={handleChange}
-                  />
-                  <div className={`flex h-14 w-14 items-center justify-center rounded-2xl transition-colors ${resumeFile ? 'neu-convex text-green-500' : 'neu-flat text-blue-500 group-hover:text-blue-600'}`}>
-                    {resumeFile ? <CheckCircle2 className="h-6 w-6" /> : <Upload className="h-6 w-6" />}
-                  </div>
-                  {resumeFile ? (
-                    <div className="text-center relative z-20 flex flex-col items-center">
-                      <p className="text-sm font-bold text-slate-800">{resumeFile.name}</p>
-                      <div className="flex items-center justify-center gap-3 mt-2">
-                        <span className="text-xs font-semibold text-green-600">Ready for AI Analysis</span>
-                        <button
-                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setResumeFile(null); }}
-                          className="flex items-center gap-1 text-xs font-bold text-red-500 hover:text-red-700 bg-red-500/10 hover:bg-red-500/20 px-2 py-1 rounded-md transition-colors cursor-pointer"
-                        >
-                          <XCircle className="w-3 h-3" /> Remove
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-center">
-                      <p className="text-sm font-bold text-slate-700">Drop your resume here, or click to browse</p>
-                      <p className="text-xs font-semibold text-slate-500 mt-1">PDF, DOC, or DOCX up to 5MB</p>
-                    </div>
-                  )}
-                </div>
-
-                <NeuCard className="p-4" variant="pressed">
-                  <label className="text-sm font-bold text-slate-700 mb-2 block">Job Description Context</label>
-                  <textarea
-                    rows={3}
-                    value={jobDescription}
-                    onChange={(e) => setJobDescription(e.target.value)}
-                    placeholder="Paste the job description or LinkedIn URL..."
-                    className="w-full bg-transparent p-0 text-sm font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none resize-none"
-                  />
-                </NeuCard>
-
-                <div className="flex justify-end pt-2">
-                  <NeuButton
-                    variant="primary"
-                    onClick={() => setStep("configure")}
-                    className={`text-white px-8 ${!resumeFile && !jobDescription.trim() ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    disabled={!resumeFile && !jobDescription.trim()}
+                <div className="pt-6">
+                  <NeuButton 
+                    variant="primary" 
+                    className="w-full py-3 bg-blue-600 text-white font-bold text-xs justify-center flex items-center gap-1.5"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate('/audio-setup');
+                    }}
                   >
-                    Continue <ChevronRight className="w-4 h-4 ml-2" />
+                    Launch Audio Coach &rarr;
                   </NeuButton>
                 </div>
-              </motion.div>
-            )}
+              </NeuCard>
+            </motion.div>
 
-            {step === "configure" && (
-              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-6 space-y-4">
+            {/* 3D Panel Interview Redirect Card */}
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }} 
+              animate={{ opacity: 1, scale: 1 }} 
+              transition={{ delay: 0.2 }}
+            >
+              <NeuCard 
+                className="p-6 h-full flex flex-col justify-between hover:scale-[1.02] transition-transform duration-300 cursor-pointer"
+                onClick={() => setActiveTab("Panel Mode")}
+              >
                 <div>
-                  <label className="text-sm font-bold text-slate-700">Target Role</label>
-                  <input type="text" placeholder="e.g. Senior Frontend Engineer" className="mt-2 w-full rounded-xl neu-pressed px-4 py-3 text-sm font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none" />
-                </div>
-                <div>
-                  <label className="text-sm font-bold text-slate-700">Company Context (Optional)</label>
-                  <input type="text" placeholder="e.g. Google, Stripe" className="mt-2 w-full rounded-xl neu-pressed px-4 py-3 text-sm font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none" />
-                </div>
-
-                <div className="pt-4 flex flex-col sm:flex-row gap-4">
-                  <NeuButton onClick={() => setStep("upload")} className="flex-1">Back</NeuButton>
-                  <NeuButton variant="primary" onClick={() => setStep("generating")} className="flex-1 text-white">Generate Tracks</NeuButton>
-                </div>
-              </motion.div>
-            )}
-
-            {step === "generating" && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center justify-center py-12 gap-6">
-                <div className="w-16 h-16 rounded-full border-4 border-slate-200 border-t-blue-500 animate-spin" />
-                <p className="text-sm font-bold text-slate-600 animate-pulse">Analyzing profile & drafting questions...</p>
-              </motion.div>
-            )}
-
-            {step === "ready" && (
-              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-6 space-y-4">
-                <NeuCard className="p-4" variant="pressed">
-                  <div className="flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-blue-500" />
-                    <p className="text-sm font-bold text-slate-800">Blueprint Ready</p>
+                  <div className="h-12 w-12 rounded-2xl neu-pressed text-purple-600 flex items-center justify-center mb-5">
+                    <Users className="h-6 w-6" />
                   </div>
-                  <p className="mt-1 text-xs font-semibold text-slate-500">12 questions generated • 35 min estimated</p>
-                </NeuCard>
-                <NeuButton as={Link} to="/report" variant="primary" className="w-full justify-center gap-2 py-4">
-                  <Play className="h-4 w-4" /> Mock Interview & View Report
-                </NeuButton>
-              </motion.div>
-            )}
-          </NeuCard>
+                  <h3 className="font-display text-lg font-black text-slate-800 mb-2">3D Panel Interview</h3>
+                  <p className="text-xs font-semibold text-slate-500 leading-relaxed">
+                    Face multiple AI recruiters simultaneously in a virtual 3D room. Select specialized panel members to test your technical depth.
+                  </p>
+                </div>
+                <div className="pt-6">
+                  <NeuButton 
+                    variant="secondary" 
+                    className="w-full py-3 text-slate-700 font-bold text-xs justify-center flex items-center gap-1.5"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveTab("Panel Mode");
+                    }}
+                  >
+                    Enter Panel Mode &rarr;
+                  </NeuButton>
+                </div>
+              </NeuCard>
+            </motion.div>
+
+          </div>
         </div>
 
         <div className="lg:col-span-2 space-y-4">
@@ -1104,7 +1007,7 @@ const Dashboard = () => {
               transition={{ duration: 0.2 }}
               className="w-full h-full"
             >
-              {activeTab === "New Interview" && <NewInterviewView sessions={sessions} profile={profile} />}
+              {activeTab === "New Interview" && <NewInterviewView sessions={sessions} profile={profile} setActiveTab={setActiveTab} />}
               {activeTab === "Past Sessions" && <PastSessionsView sessions={sessions} />}
               {activeTab === "Progress Hub" && <ProgressHubView sessions={sessions} />}
               {activeTab === "Skill Map" && <SkillMapView sessions={sessions} />}

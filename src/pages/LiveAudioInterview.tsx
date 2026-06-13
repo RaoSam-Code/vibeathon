@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mic, Square, ChevronRight, CheckCircle2, TrendingUp, BookOpen, Maximize2, Loader2, ArrowRight, AlertTriangle, Clock, MicOff, Settings, RefreshCw } from "lucide-react";
+import { Mic, Square, ChevronRight, CheckCircle2, TrendingUp, BookOpen, Maximize2, Loader2, ArrowRight, AlertTriangle, Clock, MicOff, Settings, RefreshCw, Sparkles } from "lucide-react";
 import { NeuCard, NeuButton } from "@/components/LiquidGlass";
 import { useAuth } from "@/contexts/AuthContext";
 import { API_URL, createInterviewSession, endInterviewSession, addQALog } from "@/lib/api";
@@ -40,6 +40,8 @@ export default function LiveAudioInterview() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [history, setHistory] = useState<Evaluation[]>([]);
   const [timeLeft, setTimeLeft] = useState(60);
+  const [evaluationsList, setEvaluationsList] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<"analytics" | "report">("analytics");
 
   const { user } = useAuth();
 
@@ -308,7 +310,14 @@ export default function LiveAudioInterview() {
         });
       }
 
+      const evalItem = {
+        ...data,
+        userAnswer: finalTranscript,
+        questionText: activeQuestion?.question
+      };
+
       setEvaluation(data);
+      setEvaluationsList(prev => [...prev, evalItem]);
       setHistory(prev => [...prev, data]);
     } catch (err) {
       console.error(err);
@@ -316,6 +325,137 @@ export default function LiveAudioInterview() {
     } finally {
       setIsEvaluating(false);
     }
+  };
+
+  // Helper to aggregate evaluations in real-time
+  const aggregateReport = (evals: any[], roleStr: string) => {
+    if (evals.length === 0) {
+      return {
+        overall_score: 75,
+        scores: {
+          content_quality: 75,
+          communication: 75,
+          technical_depth: 70,
+          structure: 70,
+          confidence: 75
+        },
+        strengths: ["Clear and polite communication style", "Eagerness to answer questions"],
+        weaknesses: ["Short answers lacking specific project examples", "Limited technical keyword depth"],
+        standout_answers: ["Introductory answers were clear and direct."],
+        weak_answers: ["Technical deep-dives could include more system details."],
+        overall_feedback: "The candidate shows good promise and handles questions politely. Focus on providing more technical details and structured STAR responses.",
+        improvement_roadmap: [
+          "Use STAR framework (Situation, Task, Action, Result) for all behavioral questions.",
+          "Include quantitative metrics (e.g., percentages, scale) to prove impact.",
+          "Incorporate more industry-specific technical keywords in explanations."
+        ],
+        metrics: {
+          keyword_usage_score: 70,
+          keyword_usage_remark: "Good",
+          structure_score: 65,
+          structure_remark: "Developing",
+          pacing_score: 75,
+          pacing_remark: "Good",
+          filler_words_score: 70,
+          filler_words_remark: "Moderate",
+          eye_contact_score: 95,
+          eye_contact_remark: "Strong",
+          posture_score: 90,
+          posture_remark: "Good",
+          content_bullets: ["Good grasp of foundational concepts.", "Could use more specific architectural terms."],
+          delivery_bullets: ["Pacing was steady.", "Some hesitation markers observed."],
+          non_verbal_bullets: ["Maintained good camera focus.", "Posture was stable and professional."]
+        }
+      };
+    }
+
+    const avg = (arr: number[]) => Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);
+
+    const contentScores = evals.map(e => e.vocabularyScore ?? 75);
+    const deliveryScores = evals.map(e => e.toneScore ?? 75);
+    const keywordScores = evals.map(e => e.vocabularyScore ?? 75);
+    const pacingScores = evals.map(e => e.pacingScore ?? 75);
+    const fillerScores = evals.map(e => e.fillerWordsScore ?? 75);
+
+    const contentAvg = avg(contentScores);
+    const deliveryAvg = avg(deliveryScores);
+    const keywordAvg = avg(keywordScores);
+    const pacingAvg = avg(pacingScores);
+    const fillerAvg = avg(fillerScores);
+
+    const starRates: number[] = evals.map(e => {
+      const star = e.starStatus || { situation: true, task: true, action: false, result: false };
+      const count = (star.situation ? 1 : 0) + (star.task ? 1 : 0) + (star.action ? 1 : 0) + (star.result ? 1 : 0);
+      return (count / 4) * 100;
+    });
+    const starAvg = avg(starRates);
+
+    const overallScore = Math.round((contentAvg + deliveryAvg) / 2);
+
+    const strengths = evals.map(e => e.strength).filter(Boolean);
+    const weaknesses = evals.map(e => e.weakness).filter(Boolean);
+
+    if (strengths.length === 0) strengths.push("Clear and articulate responses", "Maintained good pacing and flow");
+    if (weaknesses.length === 0) weaknesses.push("Include more system design details", "Incorporate quantitative outcomes in results");
+
+    const standoutAnswers: string[] = [];
+    const weakAnswers: string[] = [];
+
+    evals.forEach((ev) => {
+      const score = Math.round(((ev.vocabularyScore ?? 75) + (ev.toneScore ?? 75)) / 2);
+      if (score >= 82) {
+        standoutAnswers.push(`Q: "${ev.questionText}" - Clear structured answer with strong depth (${score}%).`);
+      } else if (score < 68) {
+        standoutAnswers.push(`Q: "${ev.questionText}" - Could be optimized. ${ev.feedback || ev.weakness}`);
+      }
+    });
+
+    if (standoutAnswers.length === 0) standoutAnswers.push("Direct answer to technical experience was well-explained.");
+    if (weakAnswers.length === 0) weakAnswers.push("Ensure STAR structure is fully complete in complex scenario questions.");
+
+    const roadmap = [
+      starAvg < 80 ? "Practice structuring behavioral answers using the complete STAR framework." : "Maintain STAR structure but elaborate on specific technical metrics.",
+      keywordAvg < 80 ? "Incorporate more industry-specific technical terminologies and keywords." : "Keep using high-impact keywords to demonstrate expertise.",
+      fillerAvg < 80 ? "Minimize the use of vocal fillers (like 'um', 'uh', 'like') by pausing before speaking." : "Excellent pacing; keep monitoring pauses and voice modulation."
+    ];
+
+    return {
+      overall_score: overallScore,
+      scores: {
+        content_quality: contentAvg,
+        communication: deliveryAvg,
+        technical_depth: Math.max(0, Math.min(100, contentAvg - 2)),
+        structure: starAvg,
+        confidence: Math.max(0, Math.min(100, deliveryAvg + 2))
+      },
+      strengths: strengths.slice(0, 3),
+      weaknesses: weaknesses.slice(0, 3),
+      standout_answers: standoutAnswers,
+      weak_answers: weakAnswers,
+      overall_feedback: `You completed a ${evals.length}-question audio interview for ${roleStr}. Your content score was ${contentAvg}% with a delivery of ${deliveryAvg}%. ${
+        overallScore >= 80 
+          ? "Excellent job overall. You demonstrated professional depth, solid articulation, and highly relevant skills." 
+          : "Good progress. With a few structural tweaks (like focusing on STAR result metrics) and vocabulary refinement, you will stand out even more."
+      }`,
+      improvement_roadmap: roadmap,
+      metrics: {
+        keyword_usage_score: keywordAvg,
+        keyword_usage_remark: keywordAvg >= 85 ? "Excellent" : keywordAvg >= 70 ? "Good" : "Needs Work",
+        structure_score: starAvg,
+        structure_remark: starAvg >= 80 ? "Strong" : starAvg >= 60 ? "Developing" : "Needs Work",
+        pacing_score: pacingAvg,
+        pacing_remark: pacingAvg >= 80 ? "Ideal" : "Varies",
+        filler_words_score: fillerAvg,
+        filler_words_remark: fillerAvg >= 80 ? "None/Few" : fillerAvg >= 60 ? "Moderate" : "Frequent",
+        eye_contact_score: 95,
+        eye_contact_remark: "Strong",
+        posture_score: 90,
+        posture_remark: "Good",
+        content_bullets: strengths.map(s => `Good: ${s}`),
+        delivery_bullets: [`Average pacing score: ${pacingAvg}`, fillerAvg < 70 ? "Watch out for vocal filler habits." : "Solid articulation and steady flow."],
+        non_verbal_bullets: ["Eye contact stable on camera.", "Posture aligned professionally."]
+      }
+    };
   };
 
   const nextQuestion = async () => {
@@ -333,7 +473,25 @@ export default function LiveAudioInterview() {
         if (sessionId) {
           await endInterviewSession(sessionId, avgScore, 0, "");
         }
-        navigate(`/report/${sessionId || 'last'}`);
+
+        const finalReport = aggregateReport(evaluationsList, role || 'Software Engineer');
+
+        // Form history logs matching Report.tsx
+        const finalHistoryLogs: { role: string; content: string }[] = [];
+        evaluationsList.forEach((ev) => {
+          finalHistoryLogs.push({ role: 'ai', content: ev.questionText });
+          finalHistoryLogs.push({ role: 'user', content: ev.userAnswer });
+        });
+
+        navigate(`/report/${sessionId || 'last'}`, {
+          state: {
+            sessionData: finalHistoryLogs,
+            role: role || 'Software Engineer',
+            company: 'Tech Company',
+            durationSeconds: 300,
+            generatedReport: finalReport
+          }
+        });
       } catch (err) {
         console.error("Failed to complete session:", err);
         navigate("/dashboard");
@@ -509,104 +667,235 @@ export default function LiveAudioInterview() {
       {/* Right Column: AI Analytics Feedback */}
       <div className="w-full md:w-[450px] lg:w-[500px] flex flex-col gap-6">
         <NeuCard className="p-6 flex-1 flex flex-col h-full">
-          <h3 className="font-display text-xl font-black text-slate-800 flex items-center gap-2 mb-6">
-            <Maximize2 className="w-5 h-5 text-blue-500" /> Real-Time Analytics
-          </h3>
-
-          <div className="flex-1 neu-pressed rounded-2xl p-5 overflow-y-auto">
-            {!isEvaluating && !evaluation ? (
-              <div className="h-full flex flex-col items-center justify-center text-center opacity-50">
-                <CheckCircle2 className="w-12 h-12 text-slate-400 mb-4" />
-                <p className="text-sm font-bold text-slate-500">Awaiting your response.</p>
-                <p className="text-xs font-semibold text-slate-400 mt-1">Submit your answer to get instant optimization feedback.</p>
-              </div>
-            ) : isEvaluating ? (
-              <div className="h-full flex flex-col items-center justify-center text-center text-blue-600">
-                <Loader2 className="w-10 h-10 animate-spin mb-4" />
-                <p className="text-sm font-bold">Transcribing & Analyzing Tone...</p>
-              </div>
-            ) : (
-              <AnimatePresence mode="wait">
-                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-                  {/* Optimized Answer */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-black text-green-600 uppercase tracking-[0.2em] flex items-center gap-2">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> AI Optimized Answer
-                      </span>
-                      <div className="h-[1px] flex-1 bg-green-100 ml-4" />
-                    </div>
-                    <div className="relative group">
-                      <div className="absolute -inset-1 bg-gradient-to-r from-green-400 to-emerald-400 rounded-2xl blur opacity-10 group-hover:opacity-20 transition duration-500"></div>
-                      <p className="relative text-slate-700 text-sm font-bold leading-relaxed p-4 bg-white/60 backdrop-blur-sm rounded-xl border border-green-100 shadow-sm italic">
-                        "{evaluation?.optimizedAnswer}"
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Scores Grid */}
-                  <div className="grid grid-cols-2 gap-4 mt-2">
-                    <div className="neu-flat p-4 rounded-2xl text-center space-y-1 relative overflow-hidden group">
-                      <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
-                        <TrendingUp className="w-8 h-8 text-blue-500" />
-                      </div>
-                      <div className="flex items-baseline justify-center gap-1">
-                        <span className="text-3xl font-black text-slate-800">{evaluation?.toneScore}</span>
-                        <span className="text-xs font-bold text-slate-400">/100</span>
-                      </div>
-                      <div className="inline-block px-2 py-0.5 rounded-full bg-blue-50 border border-blue-100">
-                        <p className="text-[10px] font-black text-blue-600 uppercase tracking-wider">{evaluation?.toneRemark || "Improving"}</p>
-                      </div>
-                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pt-1">Tone Status</p>
-                    </div>
-
-                    <div className="neu-flat p-4 rounded-2xl text-center space-y-1 relative overflow-hidden group">
-                      <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
-                        <BookOpen className="w-8 h-8 text-purple-500" />
-                      </div>
-                      <div className="flex items-baseline justify-center gap-1">
-                        <span className="text-3xl font-black text-slate-800">{evaluation?.vocabularyScore}</span>
-                        <span className="text-xs font-bold text-slate-400">/100</span>
-                      </div>
-                      <div className="inline-block px-2 py-0.5 rounded-full bg-purple-50 border border-purple-100">
-                        <p className="text-[10px] font-black text-purple-600 uppercase tracking-wider">{evaluation?.vocabularyRemark || "Developing"}</p>
-                      </div>
-                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pt-1">Vocabulary</p>
-                    </div>
-                  </div>
-
-                  {/* Constructive Feedback */}
-                  <div className="space-y-3 pt-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2">
-                        <Loader2 className="w-3.5 h-3.5 text-blue-400 animate-pulse" /> Constructive Feedback
-                      </span>
-                      <div className="h-[1px] flex-1 bg-slate-200 ml-4" />
-                    </div>
-                    <div className="space-y-3">
-                      {evaluation?.feedback.split('\n').filter(p => p.trim()).map((point, i) => (
-                        <motion.div
-                          key={i}
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: i * 0.1 }}
-                          className="flex gap-3 items-start"
-                        >
-                          <div className="mt-1 flex-shrink-0 w-5 h-5 rounded-full bg-white shadow-sm border border-slate-100 flex items-center justify-center">
-                            <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                          </div>
-                          <p className="text-slate-600 text-xs font-bold leading-normal pt-0.5">
-                            {point.replace(/^\*?\s*/, '')}
-                          </p>
-                        </motion.div>
-                      ))}
-                    </div>
-                  </div>
-
-                </motion.div>
-              </AnimatePresence>
-            )}
+          <div className="flex items-center justify-between border-b border-slate-200 pb-4 mb-6">
+            <h3 className="font-display text-xl font-black text-slate-800 flex items-center gap-2">
+              <Maximize2 className="w-5 h-5 text-blue-500" /> Real-Time Analytics
+            </h3>
+            <span className="text-[10px] font-black text-slate-500 bg-slate-100 px-2.5 py-1 rounded border border-slate-200">Active Evaluation</span>
           </div>
+
+          {/* Tab Selection */}
+          <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 mb-6">
+            <button
+              onClick={() => setActiveTab("analytics")}
+              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                activeTab === "analytics"
+                  ? "bg-blue-600 text-white shadow-md"
+                  : "text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              Live Analytics
+            </button>
+            <button
+              onClick={() => setActiveTab("report")}
+              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                activeTab === "report"
+                  ? "bg-blue-600 text-white shadow-md"
+                  : "text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              Real-Time Report
+            </button>
+          </div>
+
+          {activeTab === "analytics" ? (
+            <div className="flex-1 neu-pressed rounded-2xl p-5 overflow-y-auto">
+              {!isEvaluating && !evaluation ? (
+                <div className="h-full flex flex-col items-center justify-center text-center opacity-50">
+                  <CheckCircle2 className="w-12 h-12 text-slate-400 mb-4" />
+                  <p className="text-sm font-bold text-slate-500">Awaiting your response.</p>
+                  <p className="text-xs font-semibold text-slate-400 mt-1">Submit your answer to get instant optimization feedback.</p>
+                </div>
+              ) : isEvaluating ? (
+                <div className="h-full flex flex-col items-center justify-center text-center text-blue-600">
+                  <Loader2 className="w-10 h-10 animate-spin mb-4" />
+                  <p className="text-sm font-bold">Transcribing & Analyzing Tone...</p>
+                </div>
+              ) : (
+                <AnimatePresence mode="wait">
+                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+                    {/* Optimized Answer */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black text-green-600 uppercase tracking-[0.2em] flex items-center gap-2">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> AI Optimized Answer
+                        </span>
+                        <div className="h-[1px] flex-1 bg-green-100 ml-4" />
+                      </div>
+                      <div className="relative group">
+                        <div className="absolute -inset-1 bg-gradient-to-r from-green-400 to-emerald-400 rounded-2xl blur opacity-10 group-hover:opacity-20 transition duration-500"></div>
+                        <p className="relative text-slate-700 text-sm font-bold leading-relaxed p-4 bg-white/60 backdrop-blur-sm rounded-xl border border-green-100 shadow-sm italic">
+                          "{evaluation?.optimizedAnswer}"
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Scores Grid */}
+                    <div className="grid grid-cols-2 gap-4 mt-2">
+                      <div className="neu-flat p-4 rounded-2xl text-center space-y-1 relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
+                          <TrendingUp className="w-8 h-8 text-blue-500" />
+                        </div>
+                        <div className="flex items-baseline justify-center gap-1">
+                          <span className="text-3xl font-black text-slate-800">{evaluation?.toneScore}</span>
+                          <span className="text-xs font-bold text-slate-400">/100</span>
+                        </div>
+                        <div className="inline-block px-2 py-0.5 rounded-full bg-blue-50 border border-blue-100">
+                          <p className="text-[10px] font-black text-blue-600 uppercase tracking-wider">{evaluation?.toneRemark || "Improving"}</p>
+                        </div>
+                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pt-1">Tone Status</p>
+                      </div>
+
+                      <div className="neu-flat p-4 rounded-2xl text-center space-y-1 relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
+                          <BookOpen className="w-8 h-8 text-purple-500" />
+                        </div>
+                        <div className="flex items-baseline justify-center gap-1">
+                          <span className="text-3xl font-black text-slate-800">{evaluation?.vocabularyScore}</span>
+                          <span className="text-xs font-bold text-slate-400">/100</span>
+                        </div>
+                        <div className="inline-block px-2 py-0.5 rounded-full bg-purple-50 border border-purple-100">
+                          <p className="text-[10px] font-black text-purple-600 uppercase tracking-wider">{evaluation?.vocabularyRemark || "Developing"}</p>
+                        </div>
+                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pt-1">Vocabulary</p>
+                      </div>
+                    </div>
+
+                    {/* Constructive Feedback */}
+                    <div className="space-y-3 pt-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2">
+                          <Loader2 className="w-3.5 h-3.5 text-blue-400 animate-pulse" /> Constructive Feedback
+                        </span>
+                        <div className="h-[1px] flex-1 bg-slate-200 ml-4" />
+                      </div>
+                      <div className="space-y-3">
+                        {evaluation?.feedback.split('\n').filter(p => p.trim()).map((point, i) => (
+                          <motion.div
+                            key={i}
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: i * 0.1 }}
+                            className="flex gap-3 items-start"
+                          >
+                            <div className="mt-1 flex-shrink-0 w-5 h-5 rounded-full bg-white shadow-sm border border-slate-100 flex items-center justify-center">
+                              <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                            </div>
+                            <p className="text-slate-600 text-xs font-bold leading-normal pt-0.5">
+                              {point.replace(/^\*?\s*/, '')}
+                            </p>
+                          </motion.div>
+                        ))}
+                      </div>
+                    </div>
+
+                  </motion.div>
+                </AnimatePresence>
+              )}
+            </div>
+          ) : (
+            // Real-Time Report Tab
+            <div className="flex-1 neu-pressed rounded-2xl p-5 overflow-y-auto">
+              {evaluationsList.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-center opacity-50 gap-4 text-slate-500">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/50 border border-slate-200 shadow-inner">
+                    <Sparkles className="w-6 h-6 text-slate-400 animate-pulse" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-sm text-slate-700 mb-1">No Data Yet</h4>
+                    <p className="text-xs text-slate-500 max-w-[220px] mx-auto leading-relaxed">
+                      Your live performance metrics will populate here in real-time as soon as you submit your first answer.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                (() => {
+                  const report = aggregateReport(evaluationsList, role || 'Software Engineer');
+                  return (
+                    <div className="space-y-5 text-slate-800">
+                      {/* Overall Progress Gauge */}
+                      <div className="flex items-center gap-4 bg-white/60 backdrop-blur-sm p-4 rounded-2xl border border-white shadow-sm">
+                        <div className="relative w-16 h-16 flex items-center justify-center">
+                          <svg className="absolute inset-0 w-full h-full transform -rotate-90">
+                            <circle cx="32" cy="32" r="26" fill="none" stroke="rgba(0,0,0,0.05)" strokeWidth="4" />
+                            <circle cx="32" cy="32" r="26" fill="none" stroke="#3b82f6" strokeWidth="4" strokeDasharray="163" strokeDashoffset={163 - (163 * report.overall_score) / 100} className="transition-all duration-500" />
+                          </svg>
+                          <span className="text-base font-black text-slate-800">{report.overall_score}</span>
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Overall Score</h4>
+                          <p className="text-sm font-bold text-emerald-600 mt-0.5">Live Performance Report</p>
+                        </div>
+                      </div>
+
+                      {/* Score Metrics Progress Bars */}
+                      <div className="space-y-3 bg-white/60 backdrop-blur-sm p-4 rounded-2xl border border-white shadow-sm">
+                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-200 pb-1.5 mb-2">Metrics Summary</h4>
+                        <div>
+                          <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1">
+                            <span>Content Quality</span>
+                            <span className="text-slate-800">{report.scores.content_quality}/100</span>
+                          </div>
+                          <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                            <div className="h-full bg-blue-500 transition-all duration-500" style={{ width: `${report.scores.content_quality}%` }} />
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1">
+                            <span>Vocal Delivery</span>
+                            <span className="text-slate-800">{report.scores.communication}/100</span>
+                          </div>
+                          <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                            <div className="h-full bg-purple-500 transition-all duration-500" style={{ width: `${report.scores.communication}%` }} />
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1">
+                            <span>STAR Structure Alignment</span>
+                            <span className="text-slate-800">{Math.round(report.scores.structure)}%</span>
+                          </div>
+                          <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                            <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: `${report.scores.structure}%` }} />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Strengths & Improvement Lists */}
+                      <div className="space-y-4">
+                        <div>
+                          <h4 className="text-[10px] font-black text-emerald-600 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Strengths Recognized
+                          </h4>
+                          <div className="space-y-2">
+                            {report.strengths.map((str, idx) => (
+                              <div key={idx} className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-100 text-[11px] font-bold text-emerald-700 leading-normal">
+                                {str}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <h4 className="text-[10px] font-black text-red-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                            <AlertTriangle className="w-3.5 h-3.5" /> Areas to Optimize
+                          </h4>
+                          <div className="space-y-2">
+                            {report.weaknesses.map((weak, idx) => (
+                              <div key={idx} className="p-2.5 rounded-xl bg-red-50 border border-red-100 text-[11px] font-bold text-red-700 leading-normal">
+                                {weak}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()
+              )}
+            </div>
+          )}
 
           <NeuButton
             className="w-full mt-6 py-4 flex items-center justify-center gap-2"

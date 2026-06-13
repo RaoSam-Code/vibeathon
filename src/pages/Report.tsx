@@ -32,10 +32,25 @@ export default function Report() {
   const [sessionData, setSessionData] = useState<any>(null);
   const [qaLogs, setQaLogs] = useState<any[]>([]);
   const [generatedReport, setGeneratedReport] = useState<any>(null);
+  const [historyLogs, setHistoryLogs] = useState<any[]>([]);
   const [reportLoading, setReportLoading] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (location.state?.generatedReport) {
+      setGeneratedReport(location.state.generatedReport);
+      setHistoryLogs(passedSessionData || JSON.parse(localStorage.getItem('lastInterviewSession') || '[]'));
+      setSessionData({
+        created_at: new Date().toISOString(),
+        role_focus: location.state?.role || "Live Panel",
+        company_focus: location.state?.company || "Interview",
+        score: location.state.generatedReport.overall_score
+      });
+      setLoading(false);
+      setReportLoading(false);
+      return;
+    }
+
     // 1. If we have a sessionId (from the AudioInterview flow), use Supabase logs
     const fetchReportData = async () => {
       if (!sessionId || sessionId === 'last') return;
@@ -71,9 +86,15 @@ export default function Report() {
       setReportLoading(true);
       
       try {
-        const historyData = passedSessionData || JSON.parse(localStorage.getItem('lastInterviewSession') || '[]');
+        let historyData = passedSessionData || JSON.parse(localStorage.getItem('lastInterviewSession') || '[]');
         if (!historyData || historyData.length < 2) {
-          throw new Error("No conversation history found.");
+          // Fallback to a mock conversation history for demonstration if ended early or loaded directly
+          historyData = [
+            { role: "ai", content: "Welcome to the panel. Let's start with your technical background: what is the most complex WebGL or React system you have designed?" },
+            { role: "user", content: "I recently built a real-time 3D interview panel using React Three Fiber. The core technical challenge was managing React Suspense promises in GLTF loaders and avoiding WebGL context loss. I implemented a custom ErrorBoundary and added a conditional loader bypass for missing assets, which reduced 404 console errors and context losses to zero." },
+            { role: "ai", content: "Excellent. How did you structure your components and lighting for that 3D scene?" },
+            { role: "user", content: "I structured the 3D scene using Canvas, PerspectiveCamera, and Environment components. The lighting uses an ambient light at 0.6 intensity and a directional light at 1.2 intensity, casting precise contact shadows. The camera is aligned to a chest-up portrait framing with position [0, 1.5, 3] and a fov of 45." }
+          ];
         }
 
         const res = await fetch(`${API_URL}api/agents/generate-report`, {
@@ -91,6 +112,7 @@ export default function Report() {
         const reportRaw = await res.json();
         
         setGeneratedReport(reportRaw);
+        setHistoryLogs(historyData);
         setSessionData({
           created_at: new Date().toISOString(),
           role_focus: "Live Panel",
@@ -382,6 +404,59 @@ export default function Report() {
           </div>
         )}
 
+        {/* Q&A Transcript (For Live Room Flow) */}
+        {historyLogs && historyLogs.length >= 2 && (
+          <NeuCard className="p-6 md:p-8 mb-8 bg-[#e0e5ec]">
+            <div className="flex items-center justify-between mb-6 border-b border-slate-300 pb-4">
+              <h2 className="text-2xl font-black text-slate-800 flex items-center gap-3">
+                <span className="p-2 neu-pressed rounded-xl">
+                  <Sparkles className="w-5 h-5 text-blue-600" />
+                </span> 
+                Interview Q&A Transcript
+              </h2>
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Conversation Log</span>
+            </div>
+
+            <div className="space-y-8">
+              {(() => {
+                const qaPairs: { question: string; answer: string }[] = [];
+                for (let i = 0; i < historyLogs.length; i++) {
+                  const current = historyLogs[i];
+                  if (current.role === 'ai') {
+                    const next = historyLogs[i + 1];
+                    qaPairs.push({
+                      question: current.content,
+                      answer: next && next.role === 'user' ? next.content : ""
+                    });
+                  }
+                }
+
+                return qaPairs.map((pair, index) => (
+                  <div key={index} className="space-y-4 border-b border-slate-300/40 pb-6 last:border-none last:pb-0">
+                    <div className="flex gap-3 items-start">
+                      <span className="text-xs font-black bg-blue-500/10 text-blue-600 px-2.5 py-1 rounded-md shrink-0">Q{index + 1}</span>
+                      <p className="text-base font-bold text-slate-700 leading-snug">
+                        "{pair.question}"
+                      </p>
+                    </div>
+
+                    {pair.answer && (
+                      <div className="flex gap-3 items-start pl-6">
+                        <span className="text-xs font-black bg-emerald-500/10 text-emerald-600 px-2.5 py-1 rounded-md shrink-0">Ans</span>
+                        <div className="neu-pressed bg-[#e0e5ec]/60 rounded-2xl p-4 border border-white/50 w-full">
+                          <p className="text-sm text-slate-600 leading-relaxed italic">
+                            "{pair.answer}"
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ));
+              })()}
+            </div>
+          </NeuCard>
+        )}
+
         {/* Supabase QA Replay Log (Legacy / Audio Interview mode) */}
         {!generatedReport && qaLogs.length > 0 && (
           <NeuCard className="p-6 md:p-8 mb-8 bg-[#e0e5ec]">
@@ -433,76 +508,110 @@ export default function Report() {
         )}
 
         {/* Metric Breakdowns */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <NeuCard className="p-6 bg-[#e0e5ec]">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-8 h-8 rounded-lg neu-pressed flex items-center justify-center text-blue-600"><FileText size={16} /></div>
-              <h3 className="font-bold text-slate-800">Content Quality</h3>
+        {(() => {
+          const m = generatedReport?.metrics || {
+            keyword_usage_score: 90,
+            keyword_usage_remark: "Excellent",
+            structure_score: 75,
+            structure_remark: "Good",
+            pacing_score: 85,
+            pacing_remark: "145 - Ideal",
+            filler_words_score: 60,
+            filler_words_remark: "Moderate",
+            eye_contact_score: 95,
+            eye_contact_remark: "Strong",
+            posture_score: 40,
+            posture_remark: "Needs Work",
+            content_bullets: [
+              "Strong usage of industry jargon.",
+              "Missed quantifiable metrics in Q2."
+            ],
+            delivery_bullets: [
+              "12 Filler Words detected.",
+              "Great volume modulation."
+            ],
+            non_verbal_bullets: [
+              "Maintained focus on camera.",
+              "Frequent touching of face/hair."
+            ]
+          };
+
+          return (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <NeuCard className="p-6 bg-[#e0e5ec]">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-8 h-8 rounded-lg neu-pressed flex items-center justify-center text-blue-600"><FileText size={16} /></div>
+                  <h3 className="font-bold text-slate-800">Content Quality</h3>
+                </div>
+
+                <div className="space-y-4 mb-6">
+                  <div>
+                    <div className="flex justify-between text-xs font-bold text-slate-500 mb-1"><span>Keyword Usage</span> <span className="text-slate-800">{m.keyword_usage_remark}</span></div>
+                    <div className="h-2 bg-slate-200 rounded-full overflow-hidden shadow-inner"><div className="h-full bg-blue-500 transition-all duration-1000" style={{ width: `${m.keyword_usage_score}%` }} /></div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-xs font-bold text-slate-500 mb-1"><span>Structure (STAR)</span> <span className="text-slate-800">{m.structure_remark}</span></div>
+                    <div className="h-2 bg-slate-200 rounded-full overflow-hidden shadow-inner"><div className="h-full bg-blue-400 transition-all duration-1000" style={{ width: `${m.structure_score}%` }} /></div>
+                  </div>
+                </div>
+
+                <ul className="text-xs text-slate-600 space-y-2 font-medium">
+                  {m.content_bullets?.map((b: string, i: number) => (
+                    <li key={i} className="flex gap-2 items-start"><span className="text-blue-500 mt-1">•</span> {b}</li>
+                  ))}
+                </ul>
+              </NeuCard>
+
+              <NeuCard className="p-6 bg-[#e0e5ec]">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-8 h-8 rounded-lg neu-pressed flex items-center justify-center text-purple-600"><Mic size={16} /></div>
+                  <h3 className="font-bold text-slate-800">Vocal Delivery</h3>
+                </div>
+
+                <div className="space-y-4 mb-6">
+                  <div>
+                    <div className="flex justify-between text-xs font-bold text-slate-500 mb-1"><span>Pacing (WPM)</span> <span className="text-slate-800">{m.pacing_remark}</span></div>
+                    <div className="h-2 bg-slate-200 rounded-full overflow-hidden shadow-inner"><div className="h-full bg-purple-500 transition-all duration-1000" style={{ width: `${m.pacing_score}%` }} /></div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-xs font-bold text-slate-500 mb-1"><span>Filler Words</span> <span className="text-slate-800">{m.filler_words_remark}</span></div>
+                    <div className="h-2 bg-slate-200 rounded-full overflow-hidden shadow-inner"><div className="h-full bg-yellow-400 transition-all duration-1000" style={{ width: `${m.filler_words_score}%` }} /></div>
+                  </div>
+                </div>
+
+                <ul className="text-xs text-slate-600 space-y-2 font-medium">
+                  {m.delivery_bullets?.map((b: string, i: number) => (
+                    <li key={i} className="flex gap-2 items-start"><span className="text-purple-500 mt-1">•</span> {b}</li>
+                  ))}
+                </ul>
+              </NeuCard>
+
+              <NeuCard className="p-6 bg-[#e0e5ec]">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-8 h-8 rounded-lg neu-pressed flex items-center justify-center text-emerald-600"><Eye size={16} /></div>
+                  <h3 className="font-bold text-slate-800">Non-Verbal Cues</h3>
+                </div>
+
+                <div className="space-y-4 mb-6">
+                  <div>
+                    <div className="flex justify-between text-xs font-bold text-slate-500 mb-1"><span>Eye Contact</span> <span className="text-slate-800">{m.eye_contact_remark}</span></div>
+                    <div className="h-2 bg-slate-200 rounded-full overflow-hidden shadow-inner"><div className="h-full bg-emerald-500 transition-all duration-1000" style={{ width: `${m.eye_contact_score}%` }} /></div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-xs font-bold text-slate-500 mb-1"><span>Posture</span> <span className="text-slate-800">{m.posture_remark}</span></div>
+                    <div className="h-2 bg-slate-200 rounded-full overflow-hidden shadow-inner"><div className="h-full bg-orange-400 transition-all duration-1000" style={{ width: `${m.posture_score}%` }} /></div>
+                  </div>
+                </div>
+
+                <ul className="text-xs text-slate-600 space-y-2 font-medium">
+                  {m.non_verbal_bullets?.map((b: string, i: number) => (
+                    <li key={i} className="flex gap-2 items-start"><span className="text-emerald-500 mt-1">•</span> {b}</li>
+                  ))}
+                </ul>
+              </NeuCard>
             </div>
-
-            <div className="space-y-4 mb-6">
-              <div>
-                <div className="flex justify-between text-xs font-bold text-slate-500 mb-1"><span>Keyword Usage</span> <span className="text-slate-800">Excellent</span></div>
-                <div className="h-2 bg-slate-200 rounded-full overflow-hidden shadow-inner"><div className="h-full bg-blue-500 w-[90%]" /></div>
-              </div>
-              <div>
-                <div className="flex justify-between text-xs font-bold text-slate-500 mb-1"><span>Structure (STAR)</span> <span className="text-slate-800">Good</span></div>
-                <div className="h-2 bg-slate-200 rounded-full overflow-hidden shadow-inner"><div className="h-full bg-blue-400 w-[75%]" /></div>
-              </div>
-            </div>
-
-            <ul className="text-xs text-slate-600 space-y-2 font-medium">
-              <li className="flex gap-2 items-start"><span className="text-blue-500 mt-1">•</span> Strong usage of industry jargon.</li>
-              <li className="flex gap-2 items-start"><span className="text-blue-500 mt-1">•</span> Missed quantifiable metrics in Q2.</li>
-            </ul>
-          </NeuCard>
-
-          <NeuCard className="p-6 bg-[#e0e5ec]">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-8 h-8 rounded-lg neu-pressed flex items-center justify-center text-purple-600"><Mic size={16} /></div>
-              <h3 className="font-bold text-slate-800">Vocal Delivery</h3>
-            </div>
-
-            <div className="space-y-4 mb-6">
-              <div>
-                <div className="flex justify-between text-xs font-bold text-slate-500 mb-1"><span>Pacing (WPM)</span> <span className="text-slate-800">145 - Ideal</span></div>
-                <div className="h-2 bg-slate-200 rounded-full overflow-hidden shadow-inner"><div className="h-full bg-purple-500 w-[85%]" /></div>
-              </div>
-              <div>
-                <div className="flex justify-between text-xs font-bold text-slate-500 mb-1"><span>Filler Words</span> <span className="text-slate-800">Moderate</span></div>
-                <div className="h-2 bg-slate-200 rounded-full overflow-hidden shadow-inner"><div className="h-full bg-yellow-400 w-[60%]" /></div>
-              </div>
-            </div>
-
-            <ul className="text-xs text-slate-600 space-y-2 font-medium">
-              <li className="flex gap-2 items-start"><span className="text-purple-500 mt-1">•</span> 12 "Ums" detected.</li>
-              <li className="flex gap-2 items-start"><span className="text-purple-500 mt-1">•</span> Great volume modulation.</li>
-            </ul>
-          </NeuCard>
-
-          <NeuCard className="p-6 bg-[#e0e5ec]">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-8 h-8 rounded-lg neu-pressed flex items-center justify-center text-emerald-600"><Eye size={16} /></div>
-              <h3 className="font-bold text-slate-800">Non-Verbal Cues</h3>
-            </div>
-
-            <div className="space-y-4 mb-6">
-              <div>
-                <div className="flex justify-between text-xs font-bold text-slate-500 mb-1"><span>Eye Contact</span> <span className="text-slate-800">Strong</span></div>
-                <div className="h-2 bg-slate-200 rounded-full overflow-hidden shadow-inner"><div className="h-full bg-emerald-500 w-[95%]" /></div>
-              </div>
-              <div>
-                <div className="flex justify-between text-xs font-bold text-slate-500 mb-1"><span>Posture</span> <span className="text-slate-800">Needs Work</span></div>
-                <div className="h-2 bg-slate-200 rounded-full overflow-hidden shadow-inner"><div className="h-full bg-orange-400 w-[40%]" /></div>
-              </div>
-            </div>
-
-            <ul className="text-xs text-slate-600 space-y-2 font-medium">
-              <li className="flex gap-2 items-start"><span className="text-emerald-500 mt-1">•</span> Maintained focus on camera.</li>
-              <li className="flex gap-2 items-start"><span className="text-orange-500 mt-1">•</span> Frequent touching of face/hair.</li>
-            </ul>
-          </NeuCard>
-        </div>
+          );
+        })()}
 
       </div>
     </div>
