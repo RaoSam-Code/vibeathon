@@ -88,13 +88,50 @@ export default function Report() {
       try {
         let historyData = passedSessionData || JSON.parse(localStorage.getItem('lastInterviewSession') || '[]');
         if (!historyData || historyData.length < 2) {
-          // Fallback to a mock conversation history for demonstration if ended early or loaded directly
-          historyData = [
-            { role: "ai", content: "Welcome to the panel. Let's start with your technical background: what is the most complex WebGL or React system you have designed?" },
-            { role: "user", content: "I recently built a real-time 3D interview panel using React Three Fiber. The core technical challenge was managing React Suspense promises in GLTF loaders and avoiding WebGL context loss. I implemented a custom ErrorBoundary and added a conditional loader bypass for missing assets, which reduced 404 console errors and context losses to zero." },
-            { role: "ai", content: "Excellent. How did you structure your components and lighting for that 3D scene?" },
-            { role: "user", content: "I structured the 3D scene using Canvas, PerspectiveCamera, and Environment components. The lighting uses an ambient light at 0.6 intensity and a directional light at 1.2 intensity, casting precise contact shadows. The camera is aligned to a chest-up portrait framing with position [0, 1.5, 3] and a fov of 45." }
-          ];
+          const blankReport = {
+            overall_score: 0,
+            scores: {
+              content_quality: 0,
+              communication: 0,
+              technical_depth: 0,
+              structure: 0,
+              confidence: 0
+            },
+            strengths: [],
+            weaknesses: [],
+            standout_answers: [],
+            weak_answers: [],
+            overall_feedback: "No questions were answered during this session. End session triggered early.",
+            improvement_roadmap: [],
+            metrics: {
+              keyword_usage_score: 0,
+              keyword_usage_remark: "No Data",
+              structure_score: 0,
+              structure_remark: "No Data",
+              pacing_score: 0,
+              pacing_remark: "No Data",
+              filler_words_score: 0,
+              filler_words_remark: "No Data",
+              eye_contact_score: 0,
+              eye_contact_remark: "No Data",
+              posture_score: 0,
+              posture_remark: "No Data",
+              content_bullets: [],
+              delivery_bullets: [],
+              non_verbal_bullets: []
+            }
+          };
+          setGeneratedReport(blankReport);
+          setHistoryLogs(historyData || []);
+          setSessionData({
+            created_at: new Date().toISOString(),
+            role_focus: location.state?.role || "Live Panel",
+            company_focus: location.state?.company || "Interview",
+            score: 0
+          });
+          setReportLoading(false);
+          setLoading(false);
+          return;
         }
 
         const res = await fetch(`${API_URL}api/agents/generate-report`, {
@@ -241,9 +278,11 @@ export default function Report() {
               </svg>
               <div className="flex flex-col items-center justify-center z-10 bg-[#0f172e] rounded-full w-[120px] h-[120px] shadow-lg">
                 <span className="text-5xl font-black text-white">{overallScore}</span>
-                <span className="text-xs font-bold text-emerald-400 mt-1 flex items-center gap-1">
-                  ↗ +12% vs last
-                </span>
+                {overallScore > 0 && (
+                  <span className="text-xs font-bold text-emerald-400 mt-1 flex items-center gap-1">
+                    ↗ +12% vs last
+                  </span>
+                )}
               </div>
             </div>
 
@@ -284,7 +323,7 @@ export default function Report() {
 
             <div className="h-64 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={confidenceData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <AreaChart data={overallScore === 0 ? [] : confidenceData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorConfidence" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4} />
@@ -510,30 +549,21 @@ export default function Report() {
         {/* Metric Breakdowns */}
         {(() => {
           const m = generatedReport?.metrics || {
-            keyword_usage_score: 90,
-            keyword_usage_remark: "Excellent",
-            structure_score: 75,
-            structure_remark: "Good",
-            pacing_score: 85,
-            pacing_remark: "145 - Ideal",
-            filler_words_score: 60,
-            filler_words_remark: "Moderate",
-            eye_contact_score: 95,
-            eye_contact_remark: "Strong",
-            posture_score: 40,
-            posture_remark: "Needs Work",
-            content_bullets: [
-              "Strong usage of industry jargon.",
-              "Missed quantifiable metrics in Q2."
-            ],
-            delivery_bullets: [
-              "12 Filler Words detected.",
-              "Great volume modulation."
-            ],
-            non_verbal_bullets: [
-              "Maintained focus on camera.",
-              "Frequent touching of face/hair."
-            ]
+            keyword_usage_score: 0,
+            keyword_usage_remark: "No Data",
+            structure_score: 0,
+            structure_remark: "No Data",
+            pacing_score: 0,
+            pacing_remark: "No Data",
+            filler_words_score: 0,
+            filler_words_remark: "No Data",
+            eye_contact_score: 0,
+            eye_contact_remark: "No Data",
+            posture_score: 0,
+            posture_remark: "No Data",
+            content_bullets: [],
+            delivery_bullets: [],
+            non_verbal_bullets: []
           };
 
           return (

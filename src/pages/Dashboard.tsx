@@ -964,7 +964,9 @@ const Dashboard = () => {
   };
 
   // Derive display name from user metadata or email
-  const displayName = profile?.full_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User';
+  const googleName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.user_metadata?.given_name;
+  const isMockName = profile?.full_name === "Mock Candidate" || profile?.full_name === "Mock Student";
+  const displayName = (!isMockName && profile?.full_name) || googleName || user?.email?.split('@')[0] || 'User';
   const displayEmail = user?.email || '';
   const streak = profile?.current_streak || 0;
 

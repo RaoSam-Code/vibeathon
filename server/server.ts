@@ -511,13 +511,39 @@ app.post('/api/agents/generate-report', async (req, res) => {
     let historyData = req.body.history;
     const { durationSeconds = 0, role, company } = req.body;
     if (!historyData || !Array.isArray(historyData) || historyData.length < 2) {
-      // Fallback to a mock conversation history for demonstration if history is short or empty
-      historyData = [
-        { role: 'ai', content: "Welcome to the panel. Let's start with your technical background: what is the most complex WebGL or React system you have designed?" },
-        { role: 'user', content: "I recently built a real-time 3D interview panel using React Three Fiber. The core technical challenge was managing React Suspense promises in GLTF loaders and avoiding WebGL context loss. I implemented a custom ErrorBoundary and added a conditional loader bypass for missing assets, which reduced 404 console errors and context losses to zero." },
-        { role: 'ai', content: "Excellent. How did you structure your components and lighting for that 3D scene?" },
-        { role: 'user', content: "I structured the 3D scene using Canvas, PerspectiveCamera, and Environment components. The lighting uses an ambient light at 0.6 intensity and a directional light at 1.2 intensity, casting precise contact shadows. The camera is aligned to a chest-up portrait framing with position [0, 1.5, 3] and a fov of 45." }
-      ];
+      return res.json({
+        overall_score: 0,
+        scores: {
+          content_quality: 0,
+          communication: 0,
+          technical_depth: 0,
+          structure: 0,
+          confidence: 0
+        },
+        strengths: [],
+        weaknesses: [],
+        standout_answers: [],
+        weak_answers: [],
+        overall_feedback: "No questions were answered during this session. End session triggered early.",
+        improvement_roadmap: [],
+        metrics: {
+          keyword_usage_score: 0,
+          keyword_usage_remark: "No Data",
+          structure_score: 0,
+          structure_remark: "No Data",
+          pacing_score: 0,
+          pacing_remark: "No Data",
+          filler_words_score: 0,
+          filler_words_remark: "No Data",
+          eye_contact_score: 0,
+          eye_contact_remark: "No Data",
+          posture_score: 0,
+          posture_remark: "No Data",
+          content_bullets: [],
+          delivery_bullets: [],
+          non_verbal_bullets: []
+        }
+      });
     }
 
     const transcript = historyData

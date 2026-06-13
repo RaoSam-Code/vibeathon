@@ -433,40 +433,36 @@ export default function VirtualInterviewRoom() {
   const aggregateReport = (evals: any[], hist: any[], role: string, company: string) => {
     if (evals.length === 0) {
       return {
-        overall_score: 75,
+        overall_score: 0,
         scores: {
-          content_quality: 75,
-          communication: 75,
-          technical_depth: 70,
-          structure: 70,
-          confidence: 75
+          content_quality: 0,
+          communication: 0,
+          technical_depth: 0,
+          structure: 0,
+          confidence: 0
         },
-        strengths: ["Clear and polite communication style", "Eagerness to answer panel questions"],
-        weaknesses: ["Short answers lacking specific project examples", "Limited technical keyword depth"],
-        standout_answers: ["Introductory answers were clear and direct."],
-        weak_answers: ["Technical deep-dives could include more system details."],
-        overall_feedback: "The candidate shows good promise and handles questions politely. Focus on providing more technical details and structured STAR responses.",
-        improvement_roadmap: [
-          "Use STAR framework (Situation, Task, Action, Result) for all behavioral questions.",
-          "Include quantitative metrics (e.g., percentages, scale) to prove impact.",
-          "Incorporate more industry-specific technical keywords in explanations."
-        ],
+        strengths: [],
+        weaknesses: [],
+        standout_answers: [],
+        weak_answers: [],
+        overall_feedback: "No questions were answered during this session. End session triggered early.",
+        improvement_roadmap: [],
         metrics: {
-          keyword_usage_score: 70,
-          keyword_usage_remark: "Good",
-          structure_score: 65,
-          structure_remark: "Developing",
-          pacing_score: 75,
-          pacing_remark: "Good",
-          filler_words_score: 70,
-          filler_words_remark: "Moderate",
-          eye_contact_score: 95,
-          eye_contact_remark: "Strong",
-          posture_score: 90,
-          posture_remark: "Good",
-          content_bullets: ["Good grasp of foundational concepts.", "Could use more specific architectural terms."],
-          delivery_bullets: ["Pacing was steady.", "Some hesitation markers observed."],
-          non_verbal_bullets: ["Maintained good camera focus.", "Posture was stable and professional."]
+          keyword_usage_score: 0,
+          keyword_usage_remark: "No Data",
+          structure_score: 0,
+          structure_remark: "No Data",
+          pacing_score: 0,
+          pacing_remark: "No Data",
+          filler_words_score: 0,
+          filler_words_remark: "No Data",
+          eye_contact_score: 0,
+          eye_contact_remark: "No Data",
+          posture_score: 0,
+          posture_remark: "No Data",
+          content_bullets: [],
+          delivery_bullets: [],
+          non_verbal_bullets: []
         }
       };
     }
