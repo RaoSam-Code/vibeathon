@@ -90,6 +90,11 @@ export default function VirtualInterviewRoom() {
   const lastSpeechTimeRef = useRef<number>(Date.now());
 
   const recognitionRef = useRef<any>(null);
+  const panelBottomRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    panelBottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [history.length, latestEval, activeTab]);
 
   // HeyGen Clients map: { personaId: StreamingAvatar }
   const heygenClientsRef = useRef<Record<string, StreamingAvatar>>({ /* empty */ });
@@ -783,7 +788,7 @@ export default function VirtualInterviewRoom() {
         </div>
 
         {/* Right Column: AI Recruiter Coach Panel */}
-        <div className="w-96 rounded-3xl bg-slate-950/40 backdrop-blur-xl border border-white/10 p-6 flex flex-col gap-6 h-full overflow-y-auto">
+        <div className="w-96 rounded-3xl bg-slate-950/40 backdrop-blur-xl border border-white/10 p-6 flex flex-col gap-6 h-full overflow-y-auto scroll-smooth scrollbar-hide">
           <div className="flex items-center justify-between border-b border-white/10 pb-4">
             <div className="flex items-center gap-2">
               <div className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -1006,6 +1011,7 @@ export default function VirtualInterviewRoom() {
               )}
             </div>
           )}
+          <div ref={panelBottomRef} />
         </div>
       </div>
 

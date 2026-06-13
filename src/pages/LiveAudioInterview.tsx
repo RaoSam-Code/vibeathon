@@ -43,6 +43,21 @@ export default function LiveAudioInterview() {
   const [evaluationsList, setEvaluationsList] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<"analytics" | "report">("analytics");
 
+  const analyticsBottomRef = useRef<HTMLDivElement | null>(null);
+  const reportBottomRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (activeTab === "analytics") {
+      analyticsBottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
+  }, [evaluation, isEvaluating, activeTab]);
+
+  useEffect(() => {
+    if (activeTab === "report") {
+      reportBottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
+  }, [evaluationsList.length, activeTab]);
+
   const { user } = useAuth();
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -689,7 +704,7 @@ export default function LiveAudioInterview() {
           </div>
 
           {activeTab === "analytics" ? (
-            <div className="flex-1 neu-pressed rounded-2xl p-5 overflow-y-auto">
+            <div className="flex-1 neu-pressed rounded-2xl p-5 overflow-y-auto scroll-smooth scrollbar-hide">
               {!isEvaluating && !evaluation ? (
                 <div className="h-full flex flex-col items-center justify-center text-center opacity-50">
                   <CheckCircle2 className="w-12 h-12 text-slate-400 mb-4" />
@@ -782,10 +797,11 @@ export default function LiveAudioInterview() {
                   </motion.div>
                 </AnimatePresence>
               )}
+              <div ref={analyticsBottomRef} />
             </div>
           ) : (
             // Real-Time Report Tab
-            <div className="flex-1 neu-pressed rounded-2xl p-5 overflow-y-auto">
+            <div className="flex-1 neu-pressed rounded-2xl p-5 overflow-y-auto scroll-smooth scrollbar-hide">
               {evaluationsList.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center opacity-50 gap-4 text-slate-500">
                   <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/50 border border-slate-200 shadow-inner">
@@ -884,6 +900,7 @@ export default function LiveAudioInterview() {
                   );
                 })()
               )}
+              <div ref={reportBottomRef} />
             </div>
           )}
 
